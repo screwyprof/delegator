@@ -1,10 +1,32 @@
 ---
 description: "Golang development best practices and conventions"
-globs: ["**/*.go"]
+globs: **/*.go
 alwaysApply: false
 ---
 
 # Golang Development Guidelines
+
+## Modern Tool Management (Go 1.24+)
+- **Use `go get -tool` instead of global installations**
+  - `go get -tool mvdan.cc/gofumpt@latest` for formatting
+  - `go get -tool github.com/daixiang0/gci@latest` for import organization  
+  - `go get -tool github.com/golangci/golangci-lint/cmd/golangci-lint@latest` for linting
+- **Tools install to GOBIN automatically** and work across workspace modules
+- **No need for manual tool management** or external installers
+
+## Makefile Best Practices
+- **Use proper shell flags**: `set -euo pipefail` for early exit on errors
+- **One command per line** for better error reporting
+- **Variables for common patterns** to eliminate duplication
+- **Workspace-aware commands**: Must include all modules explicitly
+  - Test all modules: `go test ./... ./pkg/... ./scraper/... ./web/...`
+  - Format all modules: `go fmt ./... && go fmt ./pkg/... && go fmt ./scraper/... && go fmt ./web/...`
+
+## Documentation Organization
+- **README.md**: User-focused (setup, usage, architecture overview)
+- **DEVELOPMENT.md**: Developer-focused (detailed development workflows, build processes)
+- **Avoid duplication**: Don't repeat setup instructions across files
+- **Be specific in commit messages**: "Enhanced Makefile with proper error handling" not "Professional improvements"
 
 ## Type System Usage
 - **Express domain concepts through types**
@@ -81,7 +103,12 @@ alwaysApply: false
 - Use migrations for schema changes
 - Implement proper indexing for performance
 
-## Testing Practices
+## Testing Practices with TDD/ATDD
+- **Build tags for test organization**: `//go:build acceptance` (Go 1.24 standard)
+- **Default parallel execution**: All tests should use `t.Parallel()`
+- **Race detection**: Always run tests with `-race` flag
+- **Verbose output by default**: Use `-v` flag to see test progress
+- **Proper TDD discipline**: RED phase should fail with meaningful error messages
 - Write table-driven tests where appropriate
 - Use testify/assert for assertions
 - Mock external dependencies

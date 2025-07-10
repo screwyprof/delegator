@@ -1,6 +1,7 @@
 ---
 description: "Testing strategy for the delegation service using TDD/ATDD approach"
-globs: ["**/*_test.go", "**/*.go"]
+globs: **/*.go
+alwaysApply: false
 ---
 
 # Testing Strategy
@@ -10,67 +11,29 @@ globs: ["**/*_test.go", "**/*.go"]
 ### 1. Start with Acceptance Tests (ATDD)
 **Test the user-facing contract via Web API**
 - **Why Web API**: Users interact with the HTTP endpoint, not the scraper directly
+- **Use build tags**: `//go:build acceptance` for expensive tests
 - **Test data**: Use controlled test data in database (not live scraping)
-- **Examples**:
-  - `GET /xtz/delegations` returns proper JSON structure
-  - Year filtering works correctly
-  - Pagination works with 50 items per page
-  - Error responses for invalid parameters
+- **Start simple**: First test just checks call succeeds and returns non-nil
 
-### 2. Work Inward with Integration Tests
-**Test each service with real dependencies but controlled inputs**
+### TDD Cycle Discipline
+- **RED phase**: Test should fail with meaningful error message
+- **GREEN phase**: Simplest implementation to pass test
+- **REFACTOR**: Improve code while keeping tests passing
+- **Meaningful assertions**: Provide helpful debugging information in test failures
 
-#### Scraper Service Integration Tests
-- **Database integration**: Test scraper writes to real database correctly
-- **Mock external API**: Use test data instead of real Tzkt API calls
-- **Test scenarios**:
-  - Processing batch of delegations
-  - Checkpoint system works across restarts
-  - Duplicate detection
-  - Error handling for malformed API responses
+### Test Structure (Arrange/Act/Assert)
+- **Arrange**: Set up test data, mocks, and initial state
+- **Act**: Execute the behavior being tested
+- **Assert**: Verify the expected outcomes with helpful error messages
 
-#### Web API Service Integration Tests
-- **Database integration**: Test API reads from real database correctly
-- **Test scenarios**:
-  - Query with different filters
-  - Pagination edge cases
-  - Database connection failures
-
-### 3. Implement with Unit Tests
-**Test individual components in isolation**
-
-#### Scraper Service Units
-- **Domain model validation**: `Delegation.IsValid()`, `DelegatorAddress.IsValid()`
-- **Data transformation**: Tzkt API response → Domain model
-- **Business logic**: Processing rules, filtering logic
-- **HTTP client**: Mock external API calls
-
-#### Web API Service Units
-- **HTTP handlers**: Request parsing, response formatting
-- **Domain queries**: Database query logic
-- **Input validation**: Parameter validation
-- **Error handling**: HTTP error responses
-
-## Test Data Strategy
-
-### For Scraper Tests
-- **Use test fixtures**: JSON files with sample Tzkt API responses
-- **Controlled scenarios**: Valid data, malformed data, API errors
-- **Database**: Use test database with known state
-
-### For Web API Tests
-- **Seed test database**: Insert known delegation data
-- **Test scenarios**: Various date ranges, amounts, delegators
-- **Edge cases**: Empty results, invalid parameters
-
-## Testing Commands
-- Run `make test` to ensure code compiles and all tests pass
-- Run `make test-unit` for fast unit tests only
-- Run `make test-integration` for integration tests
-- Run `make test-acceptance` for end-to-end API tests
+## Test Organization
+- **All tests parallel**: Use `t.Parallel()` by default
+- **Verbose output**: Default to `-v` flag to see progress
+- **Race detection**: Always use `-race` flag
+- **Build tags**: Use `//go:build acceptance` to separate expensive tests
 
 ## Key Principles
 - **Acceptance tests via Web API**: Test user experience, not internal scraper behavior
-- **Integration tests for scraper**: Test data processing with controlled inputs
-- **Fast unit tests**: Test business logic in isolation
-- **No external dependencies in tests**: Mock Tzkt API, use test database
+- **Build tags separate expensive tests**: Use `//go:build acceptance`
+- **Meaningful test assertions**: Provide helpful debugging information in test failures
+- **Workspace-aware testing**: Must test all modules: `./... ./pkg/... ./scraper/... ./web/...`

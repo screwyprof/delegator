@@ -1,0 +1,70 @@
+---
+description: "Procedures for editing .cursor/rules files to prevent malformation"
+globs: .cursor/rules/**/*.mdc
+alwaysApply: false
+---
+
+# Rule Editing Procedures
+
+## Critical: Avoid Duplicate Headers
+- **NEVER use edit_file to add frontmatter** - it creates duplicate headers
+- **Always read the full file first** to understand current structure
+- **Use delete_file + cat with heredoc** for complete rewrites when headers are corrupted
+- **Use sed/awk for simple frontmatter changes** instead of edit_file
+
+## Correct MDC Examples
+
+### ✅ CORRECT Format
+```yaml
+---
+description: "Golang development best practices and conventions"
+globs: **/*.go
+alwaysApply: false
+---
+```
+
+```yaml
+---
+description: "Frontend component standards"
+globs: src/**/*.tsx, src/**/*.ts
+alwaysApply: false
+---
+```
+
+### ❌ WRONG Examples (Do Not Use)
+```yaml
+# WRONG: Quoted globs
+globs: "**/*.go"
+
+# WRONG: Array format  
+globs: ["**/*.go", "**/*.ts"]
+
+# WRONG: Duplicate headers
+---
+description: "First header"
+---
+---
+description: "Second header"
+---
+```
+
+## Tool Usage on macOS
+- **User has GNU coreutils**: Use `sed -i` (NOT `sed -i ''`)
+- **User explicitly stated**: "I am on mac with gnu core utils"
+- **Never assume BSD tools** - always use GNU syntax
+
+## Safe Editing Workflow
+1. **Read current file state** with `cat` or `head`
+2. **Identify the issue** (duplicate headers, wrong format)
+3. **Choose correct tool**:
+   - Simple text replacement: `sed`
+   - Complete rewrite: `delete_file` + `cat` with heredoc
+   - Content-only changes: `edit_file` (but NEVER for frontmatter)
+4. **Verify result** with `head` or `cat`
+
+## Red Flags to Avoid
+- Multiple `---` sections in same file
+- Quoted glob patterns: `"**/*.go"` 
+- Using edit_file for frontmatter changes
+- Complex sed commands that break syntax
+- Assuming BSD sed on macOS
