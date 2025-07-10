@@ -1,0 +1,270 @@
+---
+description: "Project context and overview for the Tezos Delegation Service"
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Tezos Delegation Service Project
+
+## Project Context
+A Tezos delegation service that gathers all [delegations](mdc:https:/opentezos.com/node-baking/baking/delegating) made on the Tezos protocol and exposes them through a public API.
+
+**Project Name**: `delegator`
+
+**Architecture**: Implemented as two separate Go services using CQRS pattern:
+- **Scraper Service**: Handles data collection from Tzkt API (write side)
+- **Web API Service**: Handles HTTP requests and responses (read side)
+
+**Engineering Focus**: Demonstrates clean architecture, scalable design patterns, and production-ready code quality while maintaining appropriate scope for rapid development.
+
+## Development Workflow & Scope Management
+
+### Demo Scope Management
+- **Time constraint**: 3-hour implementation target
+- **Goal**: Demonstrate architectural skills and concepts, not production completeness
+- **Focus**: Working system with clean architecture over feature completeness
+
+### Implementation Priorities
+
+#### **Must Build (Demo Core)**
+1. **Basic scraper** - Get recent delegations (last 1000 or 30 days)
+2. **Working API** - Single endpoint with pagination
+3. **Clean structure** - Demonstrate CQRS and layering
+4. **Docker setup** - Docker Compose with PostgreSQL
+5. **Basic tests** - Show testing approach
+6. **Clear README** - Setup instructions and architecture notes
+
+#### **Document Only (Production Notes)**
+1. **Historical backfill** - Strategy for 2018-present data
+2. **Advanced error handling** - Circuit breakers, retry policies
+3. **Monitoring** - Metrics, alerting, health checks
+4. **Scalability** - Event-driven architecture evolution
+5. **Security** - Rate limiting, authentication
+6. **Operational concerns** - Deployment, configuration management
+
+### Decision Framework
+- **Implement**: Core delegation polling, API endpoint, database operations
+- **Document**: Advanced monitoring, scaling strategies, security features
+- **Skip**: Non-essential features that don't show architectural skills
+
+## Implementation Requirements
+
+### Common Requirements (Both Services)
+- **Architecture**: CQRS pattern with separate read and write services
+- **Database**: Shared persistent store for delegation data
+- **Structure**: Monorepo with separate cmd/ entries for each service
+- **Testing**: Code must be tested
+- **Documentation**: Local setup must be simple and documented
+- **Quality**: Clean, maintainable code
+
+### Critical Data Model
+- **Delegation Entity**: Common data structure for both services
+  - `timestamp`: ISO 8601 format string
+  - `amount`: String representation of amount
+  - `delegator`: Tezos address string (maps from sender's address)
+  - `level`: String representation of block height
+
+### Implementation Strategy
+- **Go workspace setup**: Uber-style multi-module monorepo with independent service modules
+- **Professional tooling**: Self-documenting Makefile with colored output for build automation
+- **Standard library first**: Use stdlib for HTTP handling
+- **Shared database**: Start with shared database, document event-driven evolution path
+- **Appropriate abstraction**: Show layering without over-engineering
+- **Focus**: Clean, testable code over architectural purity
+
+## Scraper Service Requirements (Write Side)
+
+### Core Functionality
+- **Data Source**: Tzkt API endpoint: [https://api.tzkt.io/#operation/Operations_GetDelegations](mdc:https:/api.tzkt.io/#operation/Operations_GetDelegations)
+- **Data Processing**: Extract and transform delegation data from Tzkt API response
+- **Field Mapping**: 
+  - `sender.address` → `delegator`
+  - `block.height` → `level`
+  - `timestamp` → `timestamp` (ISO 8601)
+  - `amount` → `amount` (string)
+
+### Historical Data Requirements
+- **Backfill**: Must demonstrate approach to handle data since Tezos launched in 2018
+- **Checkpoint System**: Track last processed delegation to enable resumable operation
+- **Progress Tracking**: Monitor backfill completion progress
+
+### Continuous Operation
+- **Real-time Polling**: Service must continuously poll new delegations
+- **State Management**: Track polling state across service restarts
+- **Duplicate Prevention**: Avoid processing same delegation twice
+
+### External API Integration
+- **Rate Limiting**: Respect Tzkt API constraints
+- **Error Handling**: Handle API failures gracefully
+- **Retry Logic**: Implement exponential backoff for failed requests
+
+## Web API Service Requirements (Read Side)
+
+### Core Functionality
+- **Endpoint**: `GET /xtz/delegations`
+- **Data Source**: Read from shared database populated by scraper service
+- **Response Format**: Must return exact JSON structure as specified
+
+### API Specification
+- **Response Structure**: Must have "data" array containing delegation objects
+- **Response Format**:
+  ```json
+  {
+    "data": [ 
+      {
+        "timestamp": "2022-05-05T06:29:14Z",
+        "amount": "125896",
+        "delegator": "tz1a1SAaXRt9yoGMx29rh9FsBF4UzmvojdTL",
+        "level": "2338084"
+      }
+    ]
+  }
+  ```
+
+### Query Requirements
+- **Sorting**: Delegations must be listed most recent first
+- **Year Filtering**: Optional `year` parameter (YYYY format) for filtering by year
+- **Pagination**: Results must be paginated 50 items per page
+
+### API Implementation
+- **HTTP Handling**: Standard HTTP server with proper error responses
+- **Input Validation**: Validate year parameter format and range
+- **Database Queries**: Efficient queries with sorting, filtering, and pagination
+
+## Current Implementation vs Production Evolution
+
+### What We're Building (Current Implementation)
+
+#### Scraper Service
+- Basic Tzkt API client with simple retry logic
+- Checkpoint system using database table
+- Historical backfill demonstration (limited timeframe)
+- Continuous polling with graceful shutdown
+- Basic error handling and logging
+
+#### Web API Service  
+- Single HTTP endpoint with exact response format
+- Year filtering and 50-item pagination
+- Database queries with sorting and filtering
+- Basic error handling and validation
+- Simple HTTP server setup
+
+#### Shared Components
+- Shared database schema for delegations
+- Common libraries and utilities in `pkg/` module (logger, database, etc.)
+- Docker Compose setup for local development
+- Basic test coverage for both services
+
+### Production Architecture Evolution
+```
+Current:    Scraper → Shared DB ← Web API
+
+Production: Scraper → Raw DB → Normalizer → Normalized DB → Web API
+                                    ↓
+                              Event Communication
+```
+
+### Production Infrastructure Patterns
+
+#### Common Production Infrastructure
+
+**Health Check Endpoints**
+- **Readiness Probe**: Endpoint that returns 200 when service can accept requests
+- **Liveness Probe**: Endpoint that returns 200 when service is running (not deadlocked)
+- **Implementation**: `/health/ready` and `/health/live` endpoints
+
+**Metrics Collection**
+- **Prometheus Format**: Expose metrics in prometheus format on `/metrics` endpoint
+- **Key Metrics**: Request count, response times, error rates, queue sizes
+- **Business Metrics**: Delegations processed, API calls made, checkpoint progress
+
+**Graceful Shutdown**
+- **Signal Handling**: Listen for SIGTERM and SIGINT signals
+- **Cleanup**: Complete in-flight operations before terminating
+- **Timeout**: Set maximum shutdown time to prevent hanging
+
+**Configuration Management**
+- **Environment Variables**: Use environment variables for configuration
+- **Validation**: Validate configuration on startup
+- **Defaults**: Provide sensible defaults for development
+
+**Structured Logging**
+- **JSON Format**: Use structured JSON logging for machine parsing
+- **Correlation IDs**: Add request IDs to trace requests across services
+- **Severity Levels**: Use appropriate log levels (ERROR, WARN, INFO, DEBUG)
+
+**Error Handling**
+- **Error Types**: Define specific error types for different failure modes
+- **Retry Strategies**: Implement exponential backoff for retryable errors
+- **Circuit Breakers**: Prevent cascading failures with circuit breaker pattern
+
+#### Data Processing at Scale
+
+**Checkpoint System**
+- **Persistent State**: Store processing state in database
+- **Atomic Updates**: Update checkpoint and data in same transaction
+- **Recovery**: Resume from last successful checkpoint on restart
+
+**Batch Processing**
+- **Configurable Batches**: Allow batch size configuration
+- **Memory Management**: Process data in batches to control memory usage
+- **Transaction Boundaries**: Commit work in batches for performance
+
+**Backpressure Management**
+- **Channel Buffers**: Use buffered channels to handle burst traffic
+- **Concurrency Limits**: Limit number of concurrent operations
+- **Rate Limiting**: Implement rate limiting to prevent overwhelming downstream services
+
+**Stream Processing**
+- **Pipeline Architecture**: Chain processing stages with channels
+- **Worker Pools**: Use worker pool pattern for concurrent processing
+- **Error Propagation**: Propagate errors through pipeline stages
+
+**Progress Tracking**
+- **Monitoring**: Track processing progress and report status
+- **Metrics**: Expose progress metrics for monitoring systems
+- **Persistence**: Store progress state to survive restarts
+
+**Buffering Strategies**
+- **Write Batching**: Buffer writes to database for efficiency
+- **Read Caching**: Cache frequently accessed data
+- **Queue Management**: Use queues to decouple processing stages
+
+### What Would Be Added (Production)
+
+#### Common Infrastructure
+- **Load balancing, orchestration, auth, monitoring, security**
+- **Health check endpoints**: `/health/ready` and `/health/live`
+- **Metrics collection**: Prometheus format metrics on `/metrics` endpoint
+- **Graceful shutdown**: Signal handling with cleanup timeouts
+- **Configuration management**: Environment variables with validation
+- **Structured logging**: JSON format with correlation IDs
+
+#### Scraper Service (Production Enhancements)
+- **Historical Backfill**: Process millions of delegations since 2018 with progress tracking
+- **External API Integration**: Circuit breaker pattern and exponential backoff for Tzkt API
+- **Sophisticated Checkpointing**: Atomic updates with transaction boundaries
+- **Rate Limiting**: Request throttling to respect external API constraints
+- **Concurrent Processing**: Worker pool pattern for parallel data processing
+- **Memory Management**: Stream processing to handle large datasets efficiently
+- **Distributed Processing**: Multiple scraper instances with work coordination
+
+#### Data Normalization Service (Production)
+- **ETL Pipeline**: Extract from scraper DB, transform data, load into normalized DB
+- **Task Orchestration**: Concurrent task management with graceful shutdown
+- **Materialized Views**: Refresh aggregated views (daily/weekly/monthly) for query performance
+- **Multi-Database Coordination**: Separate source (raw) and destination (normalized) databases
+- **State Management**: Track processing state across service restarts with checkpoint caching
+- **Error Recovery**: Robust error handling with retry logic and detailed logging
+
+#### Web API Service (Production Enhancements)
+- **Advanced Caching**: Multi-layer caching for frequently accessed delegation data
+- **Query Optimization**: Efficient database queries with proper indexing
+- **Cursor Pagination**: Handle large result sets efficiently
+- **Rate Limiting**: Protect public API from abuse with request throttling
+- **Response Compression**: Efficient JSON serialization and gzip compression
+
+#### Message Queue Integration
+- **Event-driven communication**: Between all services
+- **Eventual consistency**: Handle data synchronization across services
+- **Fault tolerance**: Message durability and retry mechanisms

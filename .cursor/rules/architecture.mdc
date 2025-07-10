@@ -1,0 +1,110 @@
+---
+description: "Domain Driven Design architecture principles"
+globs: ["**/*.go"]
+alwaysApply: true
+---
+
+# Clean Architecture Guidelines
+
+## Architectural Decision Guidance
+
+### Why CQRS for Delegation Service
+- **Different performance characteristics**: Data collection (write) vs API serving (read) have different optimization needs
+- **Independent scaling**: Scraper can be optimized for throughput, API for latency
+- **Fault isolation**: External API failures don't affect read queries
+- **Clear boundaries**: Write and read concerns are naturally separated
+
+### Why Separate Read and Write Services
+- **Operational independence**: Services can be deployed, scaled, and managed independently
+- **Technology choices**: Each service can use different databases, frameworks, or patterns
+- **Team boundaries**: Different teams can own different services
+- **Failure isolation**: Problems in one service don't cascade to the other
+
+### When to Use Interfaces
+- **External dependencies**: When you need to mock or swap implementations for testing
+- **Future flexibility**: When you anticipate changing implementations (databases, APIs)
+- **Testing isolation**: When you need to unit test without external dependencies
+- **Avoid over-abstraction**: Don't create interfaces for internal components that won't change
+
+### When to Keep Domain Models Pure
+- **Business logic belongs in domain**: Validation, formatting, business rules
+- **External concerns don't belong in domain**: HTTP, database, JSON tags
+- **Testability**: Pure domain models are easier to unit test
+- **Reusability**: Domain models can be used across different layers
+
+### When to Apply Clean Architecture Patterns
+- **Medium to large projects**: Where complexity justifies the abstraction overhead
+- **Multiple external dependencies**: Databases, APIs, message queues
+- **Long-term maintenance**: When code will be maintained by multiple people over time
+- **Avoid for simple CRUD**: Don't over-engineer basic data access patterns
+
+### Architecture Decision Framework
+- **Start simple**: Begin with straightforward solutions, add complexity when needed
+- **Measure before optimizing**: Profile and benchmark before making performance assumptions
+- **Consider team size**: More abstraction for larger teams, simpler for smaller teams
+- **Think about change**: What's likely to change? What needs to stay stable?
+- **Balance abstractions**: Some coupling is acceptable for simplicity
+
+## Current Project Structure
+```
+delegator/
+├── go.work                    # Go workspace configuration
+├── go.mod                     # Root module for cmd/ and coordination
+├── Makefile                   # Build and development tasks
+├── cmd/
+│   ├── scraper/main.go        # Scraper service entry point
+│   └── web/main.go            # Web API service entry point
+├── scraper/                   # Write side (CQRS) - Independent module
+│   └── go.mod                 # Service module
+├── web/                       # Read side (CQRS) - Independent module  
+│   └── go.mod                 # Service module
+└── pkg/                       # Shared utilities - Independent module
+    └── go.mod                 # Shared module
+```
+
+## Target Implementation Structure
+```
+delegator/
+├── go.work                    # Go workspace configuration
+├── go.mod                     # Root module for cmd/ and coordination
+├── Makefile                   # Build and development tasks
+├── cmd/
+│   ├── scraper/main.go        # Scraper service entry point
+│   └── web/main.go            # Web API service entry point
+├── scraper/                   # Write side (CQRS)
+│   ├── go.mod                 # Independent service module
+│   ├── poller/                # Tzkt API polling logic
+│   ├── delegation/            # Domain models and handlers
+│   ├── store/                 # Data persistence layer
+│   └── tzkt/                  # External API client
+├── web/                       # Read side (CQRS)
+│   ├── go.mod                 # Independent service module
+│   ├── handler/               # HTTP request handlers
+│   ├── delegation/            # Domain models and finders
+│   └── store/                 # Query operations
+├── pkg/                       # Shared libraries
+│   ├── go.mod                 # Shared libraries module
+│   ├── logger/                # Structured logging utilities
+│   └── database/              # Database connection utilities
+└── migrations/                # Database schema migrations
+```
+
+## Design Decisions
+- **Go workspace monorepo** - Uber-style multi-module setup with independent service modules
+- **CQRS pattern** - Clear separation between read (web) and write (scraper) operations  
+- **Independent modules** - Each service is a separate Go module for true service boundaries
+- **Coordinated development** - `go.work` enables local development across all modules
+- **Professional tooling** - Self-documenting Makefile with colored output and awk-based help
+- **Standard naming** - `pkg/` for shared libraries/utilities following Go ecosystem conventions
+- **Service isolation** - Domain models stay within each service to maintain clear boundaries
+- **Screaming architecture** - Structure makes the system purpose immediately obvious
+- **Domain-driven naming** - Use business terms (poller, finder, recorder) over technical terms
+
+## Production Notes
+- In production, these would be separate microservices with independent deployments
+- Each service would have its own repository and configuration  
+- Go workspace structure demonstrates how modules can be independently versioned and deployed
+- Initially sharing a database, then evolving to event-driven architecture with separate databases
+- The `pkg/` module would become separate published library modules or duplicated minimal utilities
+- Standard HTTP handlers initially, with OpenAPI generation added for API documentation and client generation
+- Makefile demonstrates professional build tooling that scales to CI/CD pipelines

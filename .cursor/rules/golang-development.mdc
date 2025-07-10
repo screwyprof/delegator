@@ -1,0 +1,89 @@
+---
+description: "Golang development best practices and conventions"
+globs: ["**/*.go"]
+alwaysApply: false
+---
+
+# Golang Development Guidelines
+
+## Type System Usage
+- **Express domain concepts through types**
+  - `type DelegatorAddress string` instead of `string`
+  - `type BlockLevel int64` instead of `int64`
+  - `type Amount string` instead of `string`
+  - `type Timestamp time.Time` instead of `time.Time`
+  - Use type aliases when they add clarity and type safety
+
+- **When to create domain types**
+  - API response fields that have business meaning
+  - Database columns that represent domain concepts
+  - Values that need validation or formatting
+  - Fields that could be confused with other string/int fields
+
+## Code Organization for Data Mapping Services
+
+### Service Boundaries (What goes where)
+- **`pkg/` module**: Only infrastructure utilities (logger, database connections, HTTP helpers)
+- **Service modules**: Domain models, business logic, service-specific types
+- **Never share**: Domain entities, business rules, validation logic between services
+- **Always isolate**: Each service has its own `Delegation` type with service-specific behavior
+
+### Domain Model Behavior (What belongs in models)
+- **Validation**: Domain entities should validate their own data
+- **Formatting**: Domain types should handle their own string representation
+- **Business Rules**: Logic about what makes a valid delegation
+- **Type Conversion**: Domain types handle their own format conversions
+
+### Service Layer Behavior (What belongs in services)
+- **Data Transformation**: Converting between external API format and domain model
+- **External API Calls**: HTTP requests to Tzkt API
+- **Database Operations**: CRUD operations and queries
+- **Business Logic Coordination**: Orchestrating multiple operations
+- **Error Handling**: Wrapping and contextualizing errors
+
+### Avoid Anemic Models (In Domain Layer)
+- **Domain models should have behavior**: Business logic belongs in domain entities
+- **DTOs can be data-only**: External API responses, database rows, raw data structures
+- **Clear boundaries**: 
+  - `DelegationRaw` (database/API) → data only, no behavior
+  - `Delegation` (domain) → data + validation + business rules
+  - `DelegationResponse` (HTTP) → data only, for JSON serialization
+- **Don't**: Put all validation and business logic in service layer
+- **Don't**: Use `map[string]interface{}` for domain operations
+- **Do**: Transform data-only DTOs into rich domain models
+- **Do**: Use JSON struct tags for serialization instead of manual conversion methods
+
+## Error Handling
+- Use explicit error returns
+- Wrap errors with context using `fmt.Errorf` or `errors.Wrap`
+- Handle errors at appropriate levels
+- Log errors with sufficient context
+- Return meaningful error messages to API clients
+
+## Concurrency
+- Use goroutines for polling operations
+- Implement proper cancellation with context
+- Use channels for communication between goroutines
+- Avoid shared state where possible
+- Use sync package primitives when needed
+
+## API Development
+- Use standard HTTP status codes
+- Implement proper JSON serialization/deserialization
+- Validate input parameters
+- Handle pagination consistently
+- Include appropriate HTTP headers
+
+## Database Integration
+- Use prepared statements to prevent SQL injection
+- Implement proper connection pooling
+- Handle database transactions appropriately
+- Use migrations for schema changes
+- Implement proper indexing for performance
+
+## Testing Practices
+- Write table-driven tests where appropriate
+- Use testify/assert for assertions
+- Mock external dependencies
+- Test error conditions thoroughly
+- Use httptest for HTTP handler testing
