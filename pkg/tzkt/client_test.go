@@ -1,52 +1,28 @@
-//go:build integration
-
 package tzkt_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/screwyprof/delegator/pkg/tzkt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/screwyprof/delegator/pkg/tzkt"
 )
 
 func TestTzktClientParsesSuccessfulResponse(t *testing.T) {
 	t.Parallel()
 
-	// Arrange - Mock server with real Tzkt API response format
-	mockResponse := `[
-		{
-			"type": "delegation",
-			"id": 1098907648,
-			"level": 109,
-			"timestamp": "2018-06-30T19:30:27Z",
-			"sender": {
-				"address": "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd"
-			},
-			"amount": 25079312620,
-			"status": "applied"
-		},
-		{
-			"type": "delegation", 
-			"id": 1649410048,
-			"level": 167,
-			"timestamp": "2018-06-30T20:29:42Z",
-			"sender": {
-				"address": "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft"
-			},
-			"amount": 10199999690,
-			"status": "applied"
-		}
-	]`
+	// Arrange - Test data as structs (only fields we actually parse)
+	testDelegations := []tzkt.Delegation{
+		createTestDelegation(109, "2018-06-30T19:30:27Z", "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", 25079312620),
+		createTestDelegation(167, "2018-06-30T20:29:42Z", "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft", 10199999690),
+	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(mockResponse))
-	}))
+	server := httptest.NewServer(successHandler(t, testDelegations))
 	defer server.Close()
 
 	// Create client pointing to mock server
@@ -66,4 +42,34 @@ func TestTzktClientParsesSuccessfulResponse(t *testing.T) {
 	assert.Equal(t, int64(25079312620), delegations[0].Amount)
 	assert.Equal(t, "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", delegations[0].Sender.Address)
 	assert.Equal(t, 109, delegations[0].Level)
+}
+
+// createTestDelegation creates a test delegation with the given parameters
+func createTestDelegation(level int, timestamp, address string, amount int64) tzkt.Delegation {
+	return tzkt.Delegation{
+		Level:     level,
+		Timestamp: timestamp,
+		Sender: struct {
+			Address string `json:"address"`
+		}{
+			Address: address,
+		},
+		Amount: amount,
+	}
+}
+
+// successHandler creates an HTTP handler that returns the given delegations as JSON
+func successHandler(t *testing.T, delegations []tzkt.Delegation) http.HandlerFunc {
+	t.Helper()
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		response, err := json.Marshal(delegations)
+		require.NoError(t, err, "Failed to marshal test data")
+
+		_, err = w.Write(response)
+		require.NoError(t, err, "Failed to write response")
+	}
 }

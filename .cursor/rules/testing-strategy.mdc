@@ -52,6 +52,7 @@ alwaysApply: false
 - **Verbose output**: Default to `-v` flag to see progress
 - **Race detection**: Always use `-race` flag
 - **Build tags**: Use `//go:build acceptance` to separate expensive tests
+- **httptest = unit tests**: Tests using `httptest.NewServer()` are unit tests, not integration tests
 
 ## Key Principles
 - **Acceptance tests via Web API**: Test user experience, not internal scraper behavior

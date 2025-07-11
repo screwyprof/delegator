@@ -64,7 +64,7 @@ fmt: ## Format Go code and organize imports
 
 lint: ## Run golangci-lint static analysis
 	@printf "$(YELLOW)Running static analysis...$(NC)\n"
-	@go tool golangci-lint run ./...
+	@go tool golangci-lint run $(TEST_PACKAGES)
 	@printf "$(GREEN)Static analysis complete!$(NC)\n"
 
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)

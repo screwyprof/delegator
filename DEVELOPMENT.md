@@ -38,7 +38,7 @@ make run-web           # Start web API service
 
 **What We Built**:
 - ✅ **HTTP Client**: Clean implementation with single responsibility
-- ✅ **Integration Tests**: Mock HTTP server testing (black box)
+- ✅ **Unit Tests**: Mock HTTP server testing (black box)
 - ✅ **Acceptance Tests**: Real Tzkt API integration (black box)
 - ✅ **Proper API Design**: `GetDelegations()` returns raw `[]Delegation` 
 - ✅ **Clean Naming**: `DelegationsRequest` (removed redundant prefix)
@@ -50,20 +50,22 @@ make run-web           # Start web API service
 - **Proper error handling**: Context-aware HTTP requests with timeouts
 
 **Current Status**: 
-- Integration test passes with mocked Tzkt API responses
+- Unit test passes with mocked Tzkt API responses
 - Acceptance test ready to run against real API
 - Client handles HTTP communication and JSON parsing only
+- **REFACTOR Complete**: Test code refactored with struct-based test data and helper functions
 
-**Next Step**: REFACTOR phase - improve error handling, add more test cases
+**Next Step**: Ready for new TDD cycles (error handling, edge cases, etc.)
 
 ## Planned Tasks
 
-### 🔄 Phase 1: Tzkt API Client Improvements (REFACTOR phase)
+### ✅ Phase 1: Tzkt API Client (Complete TDD Cycle)
 - [x] ~~Implement HTTP call (GREEN phase)~~
-- [ ] Refactor and improve error handling 
-- [ ] Add more integration test cases (errors, timeouts, malformed JSON)
-- [ ] Handle rate limits and retries
-- [ ] Add request parameter validation
+- [x] ~~Refactor test code with struct-based test data and helpers (REFACTOR phase)~~
+- [ ] Add error handling test cases (new RED phase)
+- [ ] Add timeout and malformed JSON test cases (new RED phases)
+- [ ] Handle rate limits and retries (new TDD cycles)
+- [ ] Add request parameter validation (new TDD cycles)
 
 ### Phase 2: Core Services
 - [ ] Scraper service implementation
@@ -117,7 +119,7 @@ delegator/               # Go workspace root
 
 ### Testing Strategy
 - **Black box testing**: All tests use separate `_test` packages  
-- **Integration tests**: Mock HTTP servers, tagged `//go:build integration`
+- **Unit tests**: Mock HTTP servers using `httptest.NewServer()` (fast, isolated)
 - **Acceptance tests**: Real API calls, tagged `//go:build acceptance`
 - **Parallel execution**: All tests use `t.Parallel()` for speed
 
