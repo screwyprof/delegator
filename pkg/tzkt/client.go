@@ -3,9 +3,30 @@ package tzkt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
+)
+
+// Public configuration constants
+const (
+	DefaultBaseURL = "https://api.tzkt.io"
+	DefaultTimeout = 30 * time.Second
+)
+
+// Internal API constants
+const (
+	delegationsPath = "/v1/operations/delegations"
+	queryParamLimit = "limit"
+)
+
+// Sentinel errors for different failure modes
+var (
+	ErrMalformedRequest      = errors.New("malformed request")
+	ErrHTTPRequestFailed     = errors.New("http request failed")
+	ErrUnexpectedStatus      = errors.New("unexpected HTTP status code")
+	ErrMalformedResponseBody = errors.New("malformed response body")
 )
 
 // Client represents a Tzkt API client
@@ -18,9 +39,9 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: DefaultTimeout,
 		},
-		baseURL: "https://api.tzkt.io",
+		baseURL: DefaultBaseURL,
 	}
 }
 
@@ -50,26 +71,26 @@ type Delegation struct {
 
 // GetDelegations retrieves delegations from the Tzkt API
 func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error) {
-	url := fmt.Sprintf("%s/v1/operations/delegations?limit=%d", c.baseURL, req.Limit)
+	url := fmt.Sprintf("%s%s?%s=%d", c.baseURL, delegationsPath, queryParamLimit, req.Limit)
 
-	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformedRequest, err)
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("making request: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrHTTPRequestFailed, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 
 	var delegations []Delegation
 	if err := json.NewDecoder(resp.Body).Decode(&delegations); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrMalformedResponseBody, err)
 	}
 
 	return delegations, nil

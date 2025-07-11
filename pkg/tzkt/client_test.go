@@ -8,10 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/screwyprof/delegator/pkg/tzkt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/screwyprof/delegator/pkg/tzkt"
 )
 
 func TestTzktClientParsesSuccessfulResponse(t *testing.T) {

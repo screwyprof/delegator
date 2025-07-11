@@ -21,6 +21,27 @@ alwaysApply: false
 - **REFACTOR**: Improve code while keeping tests passing
 - **Meaningful assertions**: Provide helpful debugging information in test failures
 
+### CRITICAL: What's Allowed in Each TDD Phase
+**RED Phase**:
+- ✅ Write new failing test
+- ✅ Write meaningful assertions
+- ❌ No implementation changes
+
+**GREEN Phase**:
+- ✅ Write minimal code to pass test
+- ✅ Implementation can be ugly/simple
+- ❌ No new tests, no test changes
+
+**REFACTOR Phase**:
+- ✅ Improve implementation quality (error handling, naming, structure)
+- ✅ Improve test code quality (extract helpers, better names, remove duplication)
+- ✅ Keep test behavior unchanged - same assertions, same coverage
+- ❌ NEVER add new test cases or scenarios
+- ❌ NEVER change what's being tested or expected outcomes
+- ❌ NEVER add new requirements or features
+
+**New features/error cases = new TDD cycles, not refactoring**
+
 ### Test Structure (Arrange/Act/Assert)
 - **Arrange**: Set up test data, mocks, and initial state
 - **Act**: Execute the behavior being tested
