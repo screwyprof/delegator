@@ -2,98 +2,141 @@
 PKG := github.com/screwyprof/delegator
 LOCAL_PACKAGES := "github.com/screwyprof/"
 
-# Colors
-BLUE := \033[1;34m
-CYAN := \033[1;36m
-GREEN := \033[1;32m
-YELLOW := \033[1;33m
-RED := \033[1;31m
-NC := \033[0m
+# Version handling - CI can override with: make build VERSION=v1.2.3
+VERSION ?= $(shell \
+	TAG=$$(git describe --tags --exact-match HEAD 2>/dev/null); \
+	if [ -n "$$TAG" ]; then \
+		echo "$$TAG"; \
+	elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		echo "$$(git rev-parse --abbrev-ref HEAD)-$$(git rev-parse --short HEAD)"; \
+	else \
+		echo "dev"; \
+	fi)
 
-# Test configuration
+# Build configuration
+GO_FILES := $(shell find . -name "*.go" | grep -v vendor)
 TEST_FLAGS := -race -parallel 4 -v
 TEST_PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
 
-# Shell configuration for proper error handling
-SHELL := /bin/bash
-.SHELLFLAGS := -euo pipefail -c
+# Colors for output
+OK_COLOR := \033[32;01m
+NO_COLOR := \033[0m
+MAKE_COLOR := \033[33;01m%-25s\033[0m
 
-.PHONY: help deps tools build clean fmt lint check test test-acceptance test-acceptance-pkg test-acceptance-scraper test-acceptance-web run-scraper run-web
+# Shell and default goal
+SHELL := bash
+.DEFAULT_GOAL := all
 
-# Default target
-help: ## Show this help message
-	@printf "$(BLUE)Delegator - Tezos Delegation Service$(NC)\n\n"
-	@printf "$(CYAN)Available targets:$(NC)\n"
-	@awk -v green="$(GREEN)" -v nc="$(NC)" 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ { printf "  " green "%-15s" nc " %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+# Declare all phony targets upfront
+.PHONY: help deps tools clean all
+.PHONY: fmt lint check test coverage
+.PHONY: build
+.PHONY: test-acceptance test-acceptance-pkg test-acceptance-scraper test-acceptance-web
+.PHONY: run-scraper run-web
+
+help: ## Show this help screen
+	@echo -e "$(OK_COLOR)Delegator - Tezos Delegation Service$(NO_COLOR)\n"
+	@awk 'BEGIN {FS = ":.*?## "} \
+	      /^[a-zA-Z_-]+:.*?## / { \
+	          sub("\\\\n",sprintf("\n%22c"," "), $$2); \
+	          printf "$(MAKE_COLOR)  %s\n", $$1, $$2 \
+	      }' $(MAKEFILE_LIST)
+
+#
+# Development Tools
+#
 
 deps: ## Install development tools using Go 1.24 tool management
-	@printf "$(YELLOW)Installing development tools...$(NC)\n"
-	@printf "$(YELLOW)  → Installing gofumpt...$(NC)\n"
-	@go get -tool mvdan.cc/gofumpt@latest
-	@printf "$(YELLOW)  → Installing gci...$(NC)\n"
-	@go get -tool github.com/daixiang0/gci@latest
-	@printf "$(YELLOW)  → Installing golangci-lint...$(NC)\n"
-	@go get -tool github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	@printf "$(GREEN)Development tools installed!$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Installing development tools$(NO_COLOR)"
+	@go get -tool mvdan.cc/gofumpt@latest && \
+	 go get -tool github.com/daixiang0/gci@latest && \
+	 go get -tool github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 tools: ## List all installed development tools
-	@printf "$(YELLOW)Installed development tools:$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Installed development tools:$(NO_COLOR)"
 	@go list tool
 
-build: ## Build all services
-	@printf "$(YELLOW)Building scraper service...$(NC)\n"
-	@go build -o bin/scraper cmd/scraper/main.go
-	@printf "$(YELLOW)Building web API service...$(NC)\n"
-	@go build -o bin/web cmd/web/main.go
-	@printf "$(GREEN)Build complete!$(NC)\n"
-
-clean: ## Clean build artifacts
-	@printf "$(YELLOW)Cleaning build artifacts...$(NC)\n"
-	@rm -rf bin/
-	@go clean
+#
+# Code Quality
+#
 
 fmt: ## Format Go code and organize imports
-	@printf "$(YELLOW)Formatting Go code...$(NC)\n"
-	@printf "$(YELLOW)  → Tidying go modules...$(NC)\n"
-	@go mod tidy
-	@printf "$(YELLOW)  → Running gofumpt...$(NC)\n"
-	@go tool gofumpt -l -w .
-	@printf "$(YELLOW)  → Organizing imports...$(NC)\n"
-	@go tool gci write --skip-generated -s standard -s default -s "prefix($(LOCAL_PACKAGES))" .
-	@printf "$(GREEN)Code formatting complete!$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Formatting Go code$(NO_COLOR)"
+	@go mod tidy && \
+	 go tool gofumpt -l -w . && \
+	 go tool gci write $(GO_FILES) -s standard -s default -s "prefix($(LOCAL_PACKAGES))"
 
 lint: ## Run golangci-lint static analysis
-	@printf "$(YELLOW)Running static analysis...$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Running static analysis$(NO_COLOR)"
 	@go tool golangci-lint run $(TEST_PACKAGES)
-	@printf "$(GREEN)Static analysis complete!$(NC)\n"
 
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
-test: ## Run tests
-	@printf "$(YELLOW)Running tests...$(NC)\n"
+test: ## Run all tests with race detection
+	@echo -e "$(OK_COLOR)--> Running tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) $(TEST_PACKAGES)
 
+coverage: ## Run tests and show coverage report
+	@echo -e "$(OK_COLOR)--> Generating coverage report$(NO_COLOR)"
+	@go test $(TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $(TEST_PACKAGES) && \
+	 go tool cover -func=coverage.out && \
+	 go tool cover -html=coverage.out -o coverage.html && \
+	 echo -e "$(OK_COLOR)Coverage report: coverage.html$(NO_COLOR)"
+
+#
+# Build and Run
+#
+
+build: ## Build all services
+	@echo -e "$(OK_COLOR)--> Building scraper service$(NO_COLOR)"
+	@go build -o bin/scraper cmd/scraper/main.go
+	@echo -e "$(OK_COLOR)--> Building web API service$(NO_COLOR)"
+	@go build -o bin/web cmd/web/main.go
+
+#
+# Maintenance
+#
+
+clean: ## Clean build artifacts and generated files
+	@echo -e "$(OK_COLOR)--> Cleaning up$(NO_COLOR)"
+	@go clean && \
+	 rm -rf bin/ && \
+	 rm -f coverage.out coverage.html
+
+#
+# Testing
+#
+
 test-acceptance: ## Run all acceptance tests
-	@printf "$(YELLOW)Running acceptance tests...$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Running acceptance tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) -tags=acceptance $(TEST_PACKAGES)
-	@printf "$(GREEN)Acceptance tests complete!$(NC)\n"
 
 test-acceptance-pkg: ## Run pkg/ acceptance tests (external API)
-	@printf "$(YELLOW)Running pkg/ acceptance tests...$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Running pkg/ acceptance tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) -tags=acceptance ./pkg/...
 
 test-acceptance-scraper: ## Run scraper acceptance tests
-	@printf "$(YELLOW)Running scraper acceptance tests...$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Running scraper acceptance tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) -tags=acceptance ./scraper/...
 
-test-acceptance-web: ## Run web API acceptance tests  
-	@printf "$(YELLOW)Running web API acceptance tests...$(NC)\n"
+test-acceptance-web: ## Run web API acceptance tests
+	@echo -e "$(OK_COLOR)--> Running web API acceptance tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) -tags=acceptance ./web/...
 
+#
+# Services
+#
+
 run-scraper: ## Run scraper service
-	@printf "$(YELLOW)Starting scraper service...$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Starting scraper service$(NO_COLOR)"
 	@go run cmd/scraper/main.go
 
 run-web: ## Run web API service
-	@printf "$(YELLOW)Starting web API service...$(NC)\n"
+	@echo -e "$(OK_COLOR)--> Starting web API service$(NO_COLOR)"
 	@go run cmd/web/main.go
+
+#
+# Common Development Workflow
+#
+
+all: check build ## Complete development workflow (check and build)
