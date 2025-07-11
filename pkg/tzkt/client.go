@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -84,7 +85,11 @@ func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrHTTPRequestFailed, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// Drain response body to enable connection reuse
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
