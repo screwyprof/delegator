@@ -2,6 +2,8 @@ package tzkt
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -22,22 +24,53 @@ func NewClient() *Client {
 	}
 }
 
-// GetDelegationsRequest represents parameters for getting delegations
-type GetDelegationsRequest struct {
+// NewClientWithHTTP creates a new Tzkt API client with custom HTTP client and base URL
+func NewClientWithHTTP(httpClient *http.Client, baseURL string) *Client {
+	return &Client{
+		httpClient: httpClient,
+		baseURL:    baseURL,
+	}
+}
+
+// DelegationsRequest represents parameters for getting delegations
+type DelegationsRequest struct {
 	Limit  int
 	Offset int
 }
 
-// Delegation represents a Tezos delegation
+// Delegation represents a Tezos delegation from Tzkt API
 type Delegation struct {
+	Level     int    `json:"level"`
 	Timestamp string `json:"timestamp"`
-	Amount    string `json:"amount"`
-	Delegator string `json:"delegator"`
-	Level     string `json:"level"`
+	Sender    struct {
+		Address string `json:"address"`
+	} `json:"sender"`
+	Amount int64 `json:"amount"`
 }
 
 // GetDelegations retrieves delegations from the Tzkt API
-func (c *Client) GetDelegations(ctx context.Context, req GetDelegationsRequest) ([]Delegation, error) {
-	// Just enough to make the test pass - return empty slice, no error
-	return []Delegation{}, nil
+func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error) {
+	url := fmt.Sprintf("%s/v1/operations/delegations?limit=%d", c.baseURL, req.Limit)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("making request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var delegations []Delegation
+	if err := json.NewDecoder(resp.Body).Decode(&delegations); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	return delegations, nil
 }

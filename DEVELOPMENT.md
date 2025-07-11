@@ -32,40 +32,38 @@ make run-web           # Start web API service
 - [x] ATDD test infrastructure with build tags
 - [x] Documentation and development guides
 
-### 🔄 In Progress: Tzkt API Client
+### ✅ Completed: Tzkt API Client (TDD Cycle)
 
-**Current TDD Cycle**: RED → GREEN (ready for implementation)
+**TDD Cycle Status**: RED → GREEN → REFACTOR (ready for improvements)
 
-**Specific Test**: `TestTzktClientGetDelegations` in `pkg/tzkt/client_acceptance_test.go`
+**What We Built**:
+- ✅ **HTTP Client**: Clean implementation with single responsibility
+- ✅ **Integration Tests**: Mock HTTP server testing (black box)
+- ✅ **Acceptance Tests**: Real Tzkt API integration (black box)
+- ✅ **Proper API Design**: `GetDelegations()` returns raw `[]Delegation` 
+- ✅ **Clean Naming**: `DelegationsRequest` (removed redundant prefix)
 
-**Test Intent**: Verify that our client can make a real HTTP call to Tzkt API and receive actual delegation data
+**Key Decisions Made**:
+- **HTTP client returns raw API data**: No domain mapping in client layer
+- **Black box testing**: Both tests use separate `_test` package
+- **Dependency injection**: `NewClientWithHTTP()` allows custom HTTP client and base URL
+- **Proper error handling**: Context-aware HTTP requests with timeouts
 
 **Current Status**: 
-- Test properly fails with meaningful error: "Expected to receive delegations from Tzkt API, but got empty slice"
-- Test currently skipped via `t.Skip()` to keep build green during infrastructure work
-- `GetDelegations()` method returns `nil` (causes the failure)
+- Integration test passes with mocked Tzkt API responses
+- Acceptance test ready to run against real API
+- Client handles HTTP communication and JSON parsing only
 
-**Implementation Decision**: 
-- Use real HTTP calls in acceptance tests (not mocked)
-- Test against live Tzkt API with small limit (10 delegations)
-- Fail fast with clear error messages
-
-**Next Step**: Implement HTTP call in `pkg/tzkt/client.go` 
-- Remove `t.Skip()` from test
-- Make `GetDelegations()` return actual data from `https://api.tzkt.io/v1/operations/delegations`
-
-**Run Test**:
-```bash
-make test-acceptance-pkg  # Currently skipped - will fail when t.Skip() removed
-```
+**Next Step**: REFACTOR phase - improve error handling, add more test cases
 
 ## Planned Tasks
 
-### Phase 1: Complete Tzkt API Client
-- [ ] Implement HTTP call (GREEN phase)
-- [ ] Refactor and improve error handling (REFACTOR phase)
-- [ ] Add more test cases and edge cases
+### 🔄 Phase 1: Tzkt API Client Improvements (REFACTOR phase)
+- [x] ~~Implement HTTP call (GREEN phase)~~
+- [ ] Refactor and improve error handling 
+- [ ] Add more integration test cases (errors, timeouts, malformed JSON)
 - [ ] Handle rate limits and retries
+- [ ] Add request parameter validation
 
 ### Phase 2: Core Services
 - [ ] Scraper service implementation
@@ -106,7 +104,7 @@ delegator/               # Go workspace root
 ├── cmd/                # Service entry points
 │   ├── scraper/        # Write side (CQRS)
 │   └── web/            # Read side (CQRS)  
-├── pkg/tzkt/           # 🔄 Current work: API client
+├── pkg/tzkt/           # ✅ Completed: HTTP client for Tzkt API
 ├── scraper/            # Independent Go module
 └── web/                # Independent Go module
 ```
@@ -118,7 +116,8 @@ delegator/               # Go workspace root
 4. **SKIP**: Use `t.Skip()` for clean commits during development
 
 ### Testing Strategy
-- **Unit tests**: Fast, isolated, no external dependencies
+- **Black box testing**: All tests use separate `_test` packages  
+- **Integration tests**: Mock HTTP servers, tagged `//go:build integration`
 - **Acceptance tests**: Real API calls, tagged `//go:build acceptance`
 - **Parallel execution**: All tests use `t.Parallel()` for speed
 

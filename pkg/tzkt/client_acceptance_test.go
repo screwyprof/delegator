@@ -1,6 +1,6 @@
 //go:build acceptance
 
-package tzkt
+package tzkt_test
 
 import (
 	"context"
@@ -8,17 +8,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/screwyprof/delegator/pkg/tzkt"
 )
 
 func TestTzktClientGetDelegations(t *testing.T) {
-	t.Skip("TODO: Implement HTTP call to Tzkt API - part of next TDD cycle")
 	t.Parallel()
 
 	// Arrange
-	client := NewClient()
+	client := tzkt.NewClient()
 
 	// Act - Call the real Tzkt API
-	delegations, err := client.GetDelegations(context.Background(), GetDelegationsRequest{
+	delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
 		Limit: 10,
 	})
 
