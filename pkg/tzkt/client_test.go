@@ -124,6 +124,118 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		assert.ErrorIs(t, err, tzkt.ErrMalformedResponseBody)
 		assert.Nil(t, delegations)
 	})
+
+	t.Run("it uses provided limit when specified", func(t *testing.T) {
+		t.Parallel()
+
+		// Track the actual request URL
+		var requestURL string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestURL = r.URL.String()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte(`[]`))
+			require.NoError(t, err, "Failed to write response")
+		}))
+		defer server.Close()
+
+		client := tzkt.NewClientWithHTTP(server.Client(), server.URL)
+
+		// Act - Call with specific limit
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit: 25,
+		})
+
+		// Assert
+		require.NoError(t, err)
+		assert.Contains(t, requestURL, "limit=25", "Expected provided limit in URL")
+	})
+
+	t.Run("it uses default limit when not specified", func(t *testing.T) {
+		t.Parallel()
+
+		// Track the actual request URL
+		var requestURL string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestURL = r.URL.String()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte(`[]`))
+			require.NoError(t, err, "Failed to write response")
+		}))
+		defer server.Close()
+
+		client := tzkt.NewClientWithHTTP(server.Client(), server.URL)
+
+		// Act - Call with zero limit (not specified)
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit: 0,
+		})
+
+		// Assert
+		require.NoError(t, err)
+		assert.Contains(t, requestURL, "limit=100", "Expected default limit (100) in URL when not specified")
+	})
+
+	t.Run("it excludes offset parameter when zero", func(t *testing.T) {
+		t.Parallel()
+
+		// Track the actual request URL
+		var requestURL string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestURL = r.URL.String()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte(`[]`))
+			require.NoError(t, err, "Failed to write response")
+		}))
+		defer server.Close()
+
+		client := tzkt.NewClientWithHTTP(server.Client(), server.URL)
+
+		// Act - Call with zero offset
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit:  10,
+			Offset: 0,
+		})
+
+		// Assert
+		require.NoError(t, err)
+		assert.Contains(t, requestURL, "limit=10", "Expected limit parameter in URL")
+		assert.NotContains(t, requestURL, "offset", "Expected no offset parameter when zero")
+	})
+
+	t.Run("it includes offset parameter when specified", func(t *testing.T) {
+		t.Parallel()
+
+		// Track the actual request URL
+		var requestURL string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestURL = r.URL.String()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte(`[]`))
+			require.NoError(t, err, "Failed to write response")
+		}))
+		defer server.Close()
+
+		client := tzkt.NewClientWithHTTP(server.Client(), server.URL)
+
+		// Act - Call with specific offset
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit:  10,
+			Offset: 50,
+		})
+
+		// Assert
+		require.NoError(t, err)
+		assert.Contains(t, requestURL, "limit=10", "Expected limit parameter in URL")
+		assert.Contains(t, requestURL, "offset=50", "Expected offset parameter in URL")
+	})
 }
 
 // createTestDelegation creates a test delegation with the given parameters

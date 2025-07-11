@@ -1,6 +1,5 @@
 ---
-description: "AI agent behavior and communication guidelines"
-globs: ["**/*"]
+description: "AI agent behavior standards and communication guidelines"
 alwaysApply: true
 ---
 
@@ -41,6 +40,17 @@ alwaysApply: true
   - Never provide performance metrics ("millisecond response times", "sub-second queries") for non-existent systems
   - Don't use buzzwords ("production-ready", "enterprise-scale") without specific meaning
   - Use measurable, specific language over marketing terms
+
+### Anti-Marketing Language
+- **NEVER use marketing buzzwords or meaningless adjectives in documentation**
+  - Avoid terms like "professional", "excellent", "proper", "robust", "scalable", "enterprise-scale"
+  - Avoid "raw" unless technically specific (e.g., "raw bytes" vs meaningless "raw data")
+  - Use factual, measurable descriptions instead
+  - If something isn't important enough to describe specifically, don't mention it
+  - Examples:
+    - ❌ "Professional test structure" → ✅ "Using t.Run() subtests" or just remove
+    - ❌ "Proper API design" → ✅ Just describe what it does or remove
+    - ❌ "Clean function decomposition" → ✅ Remove (implementation detail)
 
 ### Communication Validation
 - **Before any documentation response, ask:**

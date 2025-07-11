@@ -29,7 +29,7 @@ SHELL := bash
 
 # Declare all phony targets upfront
 .PHONY: help deps tools clean all
-.PHONY: fmt lint check test coverage
+.PHONY: fmt lint check test test-all coverage
 .PHONY: build
 .PHONY: test-acceptance test-acceptance-pkg test-acceptance-scraper test-acceptance-web
 .PHONY: run-scraper run-web
@@ -72,9 +72,11 @@ lint: ## Run golangci-lint static analysis
 
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
-test: ## Run all tests with race detection
-	@echo -e "$(OK_COLOR)--> Running tests$(NO_COLOR)"
+test: ## Run unit tests with race detection
+	@echo -e "$(OK_COLOR)--> Running unit tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) $(TEST_PACKAGES)
+
+test-all: test test-acceptance ## Run all tests (unit + acceptance)
 
 coverage: ## Run tests and show coverage report
 	@echo -e "$(OK_COLOR)--> Generating coverage report$(NO_COLOR)"

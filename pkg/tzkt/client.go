@@ -13,12 +13,14 @@ import (
 const (
 	DefaultBaseURL = "https://api.tzkt.io"
 	DefaultTimeout = 30 * time.Second
+	DefaultLimit   = 100
 )
 
 // Internal API constants
 const (
-	delegationsPath = "/v1/operations/delegations"
-	queryParamLimit = "limit"
+	delegationsPath  = "/v1/operations/delegations"
+	queryParamLimit  = "limit"
+	queryParamOffset = "offset"
 )
 
 // Sentinel errors for different failure modes
@@ -55,8 +57,8 @@ func NewClientWithHTTP(httpClient *http.Client, baseURL string) *Client {
 
 // DelegationsRequest represents parameters for getting delegations
 type DelegationsRequest struct {
-	Limit  int
-	Offset int
+	Limit  uint
+	Offset uint
 }
 
 // Delegation represents a Tezos delegation from Tzkt API
@@ -71,11 +73,11 @@ type Delegation struct {
 
 // GetDelegations retrieves delegations from the Tzkt API
 func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error) {
-	url := fmt.Sprintf("%s%s?%s=%d", c.baseURL, delegationsPath, queryParamLimit, req.Limit)
+	req.Limit = effectiveLimit(req.Limit)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	httpReq, err := c.buildRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrMalformedRequest, err)
+		return nil, err
 	}
 
 	resp, err := c.httpClient.Do(httpReq)
@@ -94,4 +96,34 @@ func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]
 	}
 
 	return delegations, nil
+}
+
+// effectiveLimit returns the limit to use, defaulting if not specified
+func effectiveLimit(limit uint) uint {
+	if limit == 0 {
+		return DefaultLimit
+	}
+	return limit
+}
+
+// buildRequest constructs the complete HTTP request
+func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*http.Request, error) {
+	url := c.buildDelegationsURL(req.Limit, req.Offset)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMalformedRequest, err)
+	}
+
+	return httpReq, nil
+}
+
+// buildDelegationsURL constructs the API endpoint URL with query parameters
+func (c *Client) buildDelegationsURL(limit, offset uint) string {
+	if offset > 0 {
+		return fmt.Sprintf("%s%s?%s=%d&%s=%d",
+			c.baseURL, delegationsPath, queryParamLimit, limit, queryParamOffset, offset)
+	}
+	return fmt.Sprintf("%s%s?%s=%d",
+		c.baseURL, delegationsPath, queryParamLimit, limit)
 }

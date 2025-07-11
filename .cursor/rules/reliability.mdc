@@ -15,6 +15,10 @@ alwaysApply: false
   - **Response Header Timeout**: 10 seconds to receive response headers
   - **Keep-Alive**: 30 seconds to reuse connections
   - **Max Idle Connections**: 10 connections per host
+- **Response Body Handling** (Critical for connection reuse):
+  - **Always drain and close**: `defer resp.Body.Close()` + `io.Copy(io.Discard, resp.Body)`
+  - **Read limits**: Use `http.MaxBytesReader` or `io.LimitReader` to prevent memory exhaustion
+  - **Early drain on errors**: Drain body even when HTTP status indicates error
 - **Retry Strategy**: Exponential backoff with progression: 1s, 2s, 4s, 8s, 16s, then fail
 - **Rate Limiting**: Respect 10 requests per second limit (verify in Tzkt docs)
 - **Error Handling**: Log failures with context, continue polling despite temporary failures

@@ -34,45 +34,46 @@ make run-web           # Start web API service
 - [x] ATDD test infrastructure with build tags
 - [x] Documentation and development guides
 
-### ✅ Completed: Tzkt API Client (TDD Cycle with Comprehensive Tests)
+### ✅ Completed: Tzkt API Client with Offset Support
 
-**TDD Cycle Status**: Complete TDD cycle with comprehensive test coverage (93.8%)
+**Feature Status**: HTTP client can fetch delegations from Tzkt API with pagination support
 
-**What We Built**:
+**Implementation Details**:
 - ✅ **HTTP Client**: Clean implementation with single responsibility
-- ✅ **Comprehensive Unit Tests**: All error branches tested with subtests pattern
+- ✅ **Offset Support**: Pagination via offset parameter for `GetDelegations()`
+- ✅ **Default Handling**: Automatic default limit (100) when not specified
+- ✅ **Comprehensive Unit Tests**: All error branches and edge cases tested
 - ✅ **Acceptance Tests**: Real Tzkt API integration (black box)
-- ✅ **Proper API Design**: `GetDelegations()` returns raw `[]Delegation` 
-- ✅ **Clean Naming**: `DelegationsRequest` (removed redundant prefix)
-- ✅ **Professional Test Structure**: Using `t.Run()` subtests with helper functions
 
 **Test Coverage**:
 - ✅ **Success path**: Parses valid JSON responses correctly
-- ✅ **Malformed URL**: Handles invalid URLs with `ErrMalformedRequest`
-- ✅ **HTTP request failure**: Handles network errors with `ErrHTTPRequestFailed`
-- ✅ **Unexpected status**: Handles non-200 responses with `ErrUnexpectedStatus`
-- ✅ **Malformed response**: Handles invalid JSON with `ErrMalformedResponseBody`
+- ✅ **Error handling**: All error branches (malformed URL, HTTP failures, unexpected status, malformed JSON)
+- ✅ **Limit behavior**: Tests both custom limits and default fallback
+- ✅ **Offset behavior**: Tests URL construction with and without offset parameter
 
 **Key Decisions Made**:
 - **HTTP client returns raw API data**: No domain mapping in client layer
 - **Black box testing**: All tests use separate `_test` package
 - **Dependency injection**: `NewClientWithHTTP()` allows custom HTTP client and base URL
-- **Subtest organization**: Grouped related test cases with descriptive names
 
-**Current Status**: 
-- All unit tests pass with 93.8% code coverage
-- Comprehensive error handling tested
-- Acceptance test ready to run against real API
-- Ready for additional features and improvements
+**Next Steps for HTTP Client**:
+- ✅ Basic HTTP calls and pagination  
+- 🔄 **IN PROGRESS**: Response body draining for connection reuse
+- 📋 **TODO**: Response body size limits (production hardening)
+- 📋 **TODO**: Rate limiting with exponential backoff (production hardening)
+
+**Current Status**: Still completing HTTP client fundamentals before moving to scraper service
 
 ## Planned Tasks
 
-### 🔄 Phase 1: Tzkt API Client (In Progress)
+### ✅ Phase 1: Tzkt API Client (Complete)
 - [x] ~~Implement HTTP call (GREEN phase)~~
 - [x] ~~Refactor test code with struct-based test data and helpers (REFACTOR phase)~~
 - [x] ~~Add comprehensive error handling test cases~~
 - [x] ~~Test malformed URLs, HTTP failures, unexpected status codes, malformed JSON~~
-- [ ] Additional features and improvements (next up)
+- [x] ~~Implement offset support for pagination~~
+- [x] ~~Add type safety with uint parameters~~
+- [x] ~~Add comprehensive test coverage for limit and offset edge cases~~
 - [ ] Handle rate limits and retries (future enhancement)
 - [ ] Add request parameter validation (future enhancement)
 
