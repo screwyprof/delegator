@@ -114,3 +114,33 @@ alwaysApply: false
 - Mock external dependencies
 - Test error conditions thoroughly
 - Use httptest for HTTP handler testing
+
+## Code Quality and Comments
+- **Remove redundant comments for private functions where names are self-explanatory**
+  - Examples that don't need comments: `effectiveLimit`, `buildRequest`, `assertAPIError`, `newServerWithStatusCode`
+  - Only comment when the implementation is complex or non-obvious
+  - Function names should be self-documenting
+
+## Naming Principles
+
+### Intent-Revealing Names
+- **Function names should describe what they do, not abstract concepts**
+  - Example: `assertAPIError` (tests API client errors) not `assertDelegationError` (suggests business logic errors)
+  - Test helpers should clearly indicate their purpose: `newURLTrackingServer` vs `newTestServer`
+
+### Context-Appropriate Naming
+- **Don't add obvious prefixes when context is clear**
+  - In test files: `httpTimeout` not `testTimeout` - context is obvious
+  - In acceptance tests: `limit` not `testLimit` - we're already in test context
+  - Remove unnecessary qualifiers: `offset` not `stableOffset` when there's only one offset
+
+### Specificity Over Marketing
+- **Use specific capabilities over vague adjectives**
+  - Example: "implements `GetDelegations()` method" with actual signature
+  - Don't use marketing terms like "comprehensive", "advanced", "professional" in function names or comments
+  - Be concrete: `newServerWithStatusCode(500)` not `newServerWithError()`
+
+### Domain vs Infrastructure Naming
+- **Name based on the actual domain, not implementation details**
+  - `assertAPIError` for HTTP client errors vs `assertDelegationError` for business logic errors
+  - Distinguish between infrastructure concerns (HTTP, JSON) and domain concerns (delegations, validation)

@@ -7,18 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
-)
-
-// Public configuration constants
-const (
-	DefaultBaseURL = "https://api.tzkt.io"
-	DefaultTimeout = 30 * time.Second
-	DefaultLimit   = 100
 )
 
 // Internal API constants
 const (
+	defaultLimit     = 100
 	delegationsPath  = "/v1/operations/delegations"
 	queryParamLimit  = "limit"
 	queryParamOffset = "offset"
@@ -38,18 +31,8 @@ type Client struct {
 	baseURL    string
 }
 
-// NewClient creates a new Tzkt API client
-func NewClient() *Client {
-	return &Client{
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
-		baseURL: DefaultBaseURL,
-	}
-}
-
-// NewClientWithHTTP creates a new Tzkt API client with custom HTTP client and base URL
-func NewClientWithHTTP(httpClient *http.Client, baseURL string) *Client {
+// NewClient creates a new Tzkt API client with explicit dependencies
+func NewClient(httpClient *http.Client, baseURL string) *Client {
 	return &Client{
 		httpClient: httpClient,
 		baseURL:    baseURL,
@@ -103,15 +86,13 @@ func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]
 	return delegations, nil
 }
 
-// effectiveLimit returns the limit to use, defaulting if not specified
 func effectiveLimit(limit uint) uint {
 	if limit == 0 {
-		return DefaultLimit
+		return defaultLimit
 	}
 	return limit
 }
 
-// buildRequest constructs the complete HTTP request
 func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*http.Request, error) {
 	url := c.buildDelegationsURL(req.Limit, req.Offset)
 
@@ -123,7 +104,6 @@ func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*htt
 	return httpReq, nil
 }
 
-// buildDelegationsURL constructs the API endpoint URL with query parameters
 func (c *Client) buildDelegationsURL(limit, offset uint) string {
 	if offset > 0 {
 		return fmt.Sprintf("%s%s?%s=%d&%s=%d",

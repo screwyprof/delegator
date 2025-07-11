@@ -47,6 +47,33 @@ alwaysApply: false
 - **Act**: Execute the behavior being tested
 - **Assert**: Verify the expected outcomes with helpful error messages
 
+## Test Helper Design
+
+### Intent-Revealing Helper Names
+- **Function names should clearly communicate their purpose**
+  - `newURLTrackingServer()` - captures request URLs for parameter verification
+  - `assertAPIError()` - verifies API client errors (not domain errors)
+  - `newServerWithStatusCode(500)` - creates server that returns specific HTTP status
+  - `assertParsedDelegationsMatch()` - compares expected vs actual parsed data
+
+### Remove Redundant Comments
+- **Don't comment test helpers where names are self-explanatory**
+  - No comments needed for: `newServerWithInvalidJSON()`, `assertURLContainsParam()`, `createTestDelegation()`
+  - Only comment when implementation is complex or non-obvious
+  - Remove section headers like "Test server helpers" - group by function name patterns instead
+
+### Test Data and Assertions
+- **Use `assert.Equal()` with expected data structures instead of field-by-field assertions**
+  - Create expected delegation structs and compare entire arrays
+  - Reuse the same test data for both server responses and expected results
+  - Don't duplicate data creation with different variable names (`testDelegations` vs `expectedDelegations`)
+
+### Context-Appropriate Naming in Tests
+- **Don't prefix test variables with "test" when context is obvious**
+  - Use `httpTimeout` not `testTimeout` in acceptance tests
+  - Use `limit` not `testLimit` when only used in test context
+  - Use `offset` not `stableOffset` when there's only one offset value
+
 ## Test Organization
 - **All tests parallel**: Use `t.Parallel()` by default
 - **Verbose output**: Default to `-v` flag to see progress

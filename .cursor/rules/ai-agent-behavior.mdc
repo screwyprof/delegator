@@ -1,7 +1,9 @@
 ---
 description: "AI agent behavior standards and communication guidelines"
+globs: 
 alwaysApply: true
 ---
+
 
 # AI Agent Behavior Rules
 
@@ -43,7 +45,7 @@ alwaysApply: true
 
 ### Anti-Marketing Language
 - **NEVER use marketing buzzwords or meaningless adjectives in documentation**
-  - Avoid terms like "professional", "excellent", "proper", "robust", "scalable", "enterprise-scale"
+  - Avoid terms like "professional", "excellent", "proper", "robust", "scalable", "enterprise-scale", "comprehensive", "production-ready"
   - Avoid "raw" unless technically specific (e.g., "raw bytes" vs meaningless "raw data")
   - Use factual, measurable descriptions instead
   - If something isn't important enough to describe specifically, don't mention it
@@ -51,6 +53,28 @@ alwaysApply: true
     - ❌ "Professional test structure" → ✅ "Using t.Run() subtests" or just remove
     - ❌ "Proper API design" → ✅ Just describe what it does or remove
     - ❌ "Clean function decomposition" → ✅ Remove (implementation detail)
+    - ❌ "Comprehensive test coverage" → ✅ "Unit and acceptance tests"
+    - ❌ "Production-ready dependency injection" → ✅ "Accepts custom HTTP client configuration"
+
+### Business Value vs Implementation Details
+- **Focus on capabilities and business value, not implementation trivia**
+  - Example: "accepts pre-configured HTTP client for production use" not "single constructor approach"
+  - Show method signatures instead of describing them: `GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error)`
+  - Don't present basic implementation hygiene (like response body draining) as innovative features
+  - Avoid constructor count discussions - nobody cares about "single constructor approach"
+
+### Process vs Outcomes Documentation
+- **Document what was built and why it's good, not methodology**
+  - Don't document TDD phases (RED-GREEN-REFACTOR) - focus on deliverables
+  - Don't explain testing methodology in project docs - show what tests exist
+  - Example: "Working, tested, ready for integration" not "completed TDD cycle with refactoring"
+
+### Take-Home Assessment Context
+- **Keep reviewers engaged with what matters - they may be "angry hungry"**
+  - Don't waste time with implementation details that don't demonstrate value
+  - Show architectural thinking and business understanding
+  - Avoid verbose explanations of basic practices
+  - Structure documents so key information comes first (Key Decisions before implementation details)
 
 ### Communication Validation
 - **Before any documentation response, ask:**

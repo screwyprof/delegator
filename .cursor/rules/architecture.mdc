@@ -108,3 +108,36 @@ delegator/
 - The `pkg/` module would become separate published library modules or duplicated minimal utilities
 - Standard HTTP handlers initially, with OpenAPI generation added for API documentation and client generation
 - Makefile demonstrates professional build tooling that scales to CI/CD pipelines
+
+## Architectural Documentation Best Practices
+
+### Don't Prescribe Architecture Prematurely
+- **When discussing production concerns, acknowledge architectural flexibility**
+  - Example: "could be part of the client itself or a higher-level component using the client"
+  - Don't assume where concerns belong (retry logic, circuit breakers, rate limiting)
+  - Use phrases like "for now, keeping it simple" to show awareness without overengineering
+
+### Focus on What Was Actually Built
+- **Document concrete deliverables and capabilities, not theoretical benefits**
+  - Show actual method signatures: `GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error)`
+  - State what exists: "HTTP client with pagination support" not "scalable delegation retrieval system"
+  - Avoid claiming architectural benefits that aren't implemented
+
+### Avoid False Standards Claims
+- **Don't claim something follows "standard patterns" unless you can cite the actual standard**
+  - Be honest about choices made: "Two constructors" not "standard Go pattern"
+  - Don't invent architectural justifications for simple implementation choices
+  - If you don't know if something is standard practice, don't claim it
+
+### Key Decisions Should Be Actually Key
+- **Only include decisions that meaningfully impact the project**
+  - Include: Multi-module workspace, dependency injection approach, testing strategy
+  - Don't include: Basic HTTP implementation details, response body draining (that's just doing HTTP correctly)
+  - Focus on choices that enable capabilities, not implementation hygiene
+
+### Documentation Structure and Purpose
+- **DEVELOPMENT.md is for project status, not coding standards**
+  - Show architectural thinking (Key Decisions) before implementation details
+  - Don't bury important information at the bottom of documents
+  - Avoid redundancy - don't repeat the same information in multiple sections
+  - Keep coding guidelines in cursor rules, project status in development docs
