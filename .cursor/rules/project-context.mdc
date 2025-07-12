@@ -1,0 +1,29 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+
+# Project Context
+
+## Project Structure
+- Go workspace with multiple modules: root, pkg/, scraper/, web/
+- Each module has its own go.mod file
+- Use `go work sync` instead of manual `go mod tidy` in subdirectories
+- CQRS pattern: Scraper (write) and Web API (read)
+
+## Workspace Commands
+- Use `go work sync` for workspace dependency management
+- Single `./...` works for workspace-wide operations
+- Avoid manual `go mod tidy` in individual module directories
+
+## Module Organization
+- Keep modules focused and loosely coupled
+- Shared code in pkg/ module
+- Service-specific logic in dedicated modules (scraper/, web/)
+
+## Dependencies
+- Prefer standard library where possible
+- Use slog for structured logging
+- Use testify for testing assertions
+- Minimize external dependencies

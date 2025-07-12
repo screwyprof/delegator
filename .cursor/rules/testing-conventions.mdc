@@ -1,0 +1,31 @@
+---
+description: Testing patterns and conventions for Go tests
+globs: **/*_test.go
+alwaysApply: false
+---
+
+# Testing Conventions
+
+## Package Structure
+- Use `package <module>_test` for behavior testing (not `package <module>`)
+- Export internal methods (capitalize) for testability when needed
+
+## Test Organization
+- Follow Arrange-Act-Assert structure with clear comments
+- Use `t.Run()` with `t.Parallel()` for all tests and subtests
+- Create named helper functions with `t.Helper()` calls
+
+## Assertions
+- Use `require` for critical assertions that should stop test execution
+- Use `assert` for non-critical assertions that allow test continuation
+- Provide descriptive error messages for assertions
+
+## Test Quality
+- Write deterministic tests, avoid timeout-based synchronization
+- Target ≥80% test coverage
+- Test individual methods directly rather than relying on integration timeouts
+- Use proper test synchronization instead of sleep/timeout patterns
+
+## Test Execution
+- Include both race detection and parallel execution
+- Tests should run reliably in parallel without conflicts
