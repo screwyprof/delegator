@@ -3,9 +3,11 @@ package tzkt_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,10 +37,8 @@ func TestTzktClientGetDelegations(t *testing.T) {
 			Limit: 2,
 		})
 
-		// Assert - Check raw API data parsed correctly
+		// Assert
 		assertDelegationsReceived(t, err, delegations, 2)
-
-		// Verify delegations were parsed correctly
 		assertParsedDelegationsMatch(t, expectedDelegations, delegations)
 	})
 
@@ -204,7 +204,87 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		})
 
 		// Assert
-		assertURLContainsParam(t, err, requestURL, "select=id,timestamp,amount,sender,level")
+		assertSelectParameterContainsAllRequiredFields(t, err, requestURL)
+	})
+
+	t.Run("it excludes id.gt parameter when nil", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestURL string
+		server := newURLTrackingServer(t, &requestURL)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+
+		// Act
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit: 10,
+		})
+
+		// Assert
+		assertIDFilterNotPresent(t, err, requestURL)
+	})
+
+	t.Run("it includes id.gt parameter when specified", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestURL string
+		server := newURLTrackingServer(t, &requestURL)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+		idFilter := int64(12345)
+
+		// Act
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit:         10,
+			IDGreaterThan: &idFilter,
+		})
+
+		// Assert
+		assertIDFilterPresent(t, err, requestURL, idFilter)
+	})
+
+	t.Run("it excludes timestamp.ge parameter when nil", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestURL string
+		server := newURLTrackingServer(t, &requestURL)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+
+		// Act
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit: 10,
+		})
+
+		// Assert
+		assertTimestampFilterNotPresent(t, err, requestURL)
+	})
+
+	t.Run("it includes timestamp.ge parameter when specified", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestURL string
+		server := newURLTrackingServer(t, &requestURL)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+		timestampFilter := time.Date(2024, 12, 1, 10, 0, 0, 0, time.UTC)
+
+		// Act
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit:       10,
+			TimestampGE: &timestampFilter,
+		})
+
+		// Assert
+		assertTimestampFilterPresent(t, err, requestURL, timestampFilter)
 	})
 
 	t.Run("it sets gzip accept-encoding header", func(t *testing.T) {
@@ -223,8 +303,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		})
 
 		// Assert
-		require.NoError(t, err)
-		assert.Equal(t, "gzip", requestHeaders.Get("Accept-Encoding"), "Expected gzip Accept-Encoding header")
+		assertGzipCompressionRequested(t, err, requestHeaders)
 	})
 }
 
@@ -333,4 +412,51 @@ func assertURLExcludesParam(t *testing.T, err error, requestURL, excludedParam s
 func assertParsedDelegationsMatch(t *testing.T, expected, actual []tzkt.Delegation) {
 	t.Helper()
 	assert.Equal(t, expected, actual, "Parsed delegations should match expected values")
+}
+
+func assertSelectParameterContainsAllRequiredFields(t *testing.T, err error, requestURL string) {
+	t.Helper()
+	require.NoError(t, err)
+
+	requiredFields := []string{"id", "timestamp", "amount", "sender", "level"}
+
+	assert.Contains(t, requestURL, "select=", "Expected URL to contain select parameter")
+
+	for _, field := range requiredFields {
+		assert.Contains(t, requestURL, field,
+			"Expected select parameter to include required field: %s", field)
+	}
+}
+
+func assertIDFilterNotPresent(t *testing.T, err error, requestURL string) {
+	t.Helper()
+	require.NoError(t, err)
+	assert.NotContains(t, requestURL, "id.gt", "Expected no ID-based continuation filtering when not specified")
+}
+
+func assertIDFilterPresent(t *testing.T, err error, requestURL string, expectedID int64) {
+	t.Helper()
+	require.NoError(t, err)
+	expectedParam := fmt.Sprintf("id.gt=%d", expectedID)
+	assert.Contains(t, requestURL, expectedParam, "Expected continuation from ID %d", expectedID)
+}
+
+func assertTimestampFilterNotPresent(t *testing.T, err error, requestURL string) {
+	t.Helper()
+	require.NoError(t, err)
+	assert.NotContains(t, requestURL, "timestamp.ge", "Expected no time-based backfill filtering when not specified")
+}
+
+func assertTimestampFilterPresent(t *testing.T, err error, requestURL string, expectedTime time.Time) {
+	t.Helper()
+	require.NoError(t, err)
+	// Note: URL encoding will encode : as %3A, so we check for the core timestamp components
+	assert.Contains(t, requestURL, "timestamp.ge=", "Expected backfill filtering from timestamp")
+	assert.Contains(t, requestURL, "2024-12-01T10", "Expected backfill from time %v", expectedTime)
+}
+
+func assertGzipCompressionRequested(t *testing.T, err error, requestHeaders http.Header) {
+	t.Helper()
+	require.NoError(t, err)
+	assert.Equal(t, "gzip", requestHeaders.Get("Accept-Encoding"), "Expected gzip Accept-Encoding header for bandwidth optimization")
 }

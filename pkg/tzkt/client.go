@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 )
 
 // Internal API constants
@@ -14,7 +17,6 @@ const (
 	defaultLimit     = 100
 	delegationsPath  = "/v1/operations/delegations"
 	queryParamLimit  = "limit"
-	queryParamOffset = "offset"
 	queryParamSelect = "select"
 	// Select only necessary fields to minimize payload and reduce costs
 	defaultSelectFields = "id,timestamp,amount,sender,level"
@@ -42,10 +44,12 @@ func NewClient(httpClient *http.Client, baseURL string) *Client {
 	}
 }
 
-// DelegationsRequest represents parameters for getting delegations
+// DelegationsRequest represents parameters for getting delegations with filtering
 type DelegationsRequest struct {
-	Limit  uint
-	Offset uint
+	Limit         uint
+	Offset        uint       // offset pagination
+	IDGreaterThan *int64     // id.gt filter
+	TimestampGE   *time.Time // timestamp.ge filter
 }
 
 // Delegation represents a Tezos delegation from Tzkt API
@@ -59,7 +63,7 @@ type Delegation struct {
 	Amount int64 `json:"amount"`
 }
 
-// GetDelegations retrieves delegations from the Tzkt API
+// GetDelegations retrieves delegations from the Tzkt API with filtering support
 func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error) {
 	req.Limit = effectiveLimit(req.Limit)
 
@@ -98,9 +102,9 @@ func effectiveLimit(limit uint) uint {
 }
 
 func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*http.Request, error) {
-	url := c.buildDelegationsURL(req.Limit, req.Offset)
+	fullURL := c.buildDelegationsURL(req)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMalformedRequest, err)
 	}
@@ -111,12 +115,23 @@ func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*htt
 	return httpReq, nil
 }
 
-func (c *Client) buildDelegationsURL(limit, offset uint) string {
-	baseURL := fmt.Sprintf("%s%s?%s=%d&%s=%s",
-		c.baseURL, delegationsPath, queryParamLimit, limit, queryParamSelect, defaultSelectFields)
+func (c *Client) buildDelegationsURL(req DelegationsRequest) string {
+	params := url.Values{}
+	params.Set(queryParamLimit, strconv.FormatUint(uint64(req.Limit), 10))
+	params.Set(queryParamSelect, defaultSelectFields)
 
-	if offset > 0 {
-		return fmt.Sprintf("%s&%s=%d", baseURL, queryParamOffset, offset)
+	// Add filtering parameters
+	if req.IDGreaterThan != nil {
+		params.Set("id.gt", strconv.FormatInt(*req.IDGreaterThan, 10))
 	}
-	return baseURL
+	if req.TimestampGE != nil {
+		params.Set("timestamp.ge", req.TimestampGE.Format(time.RFC3339))
+	}
+
+	// Add offset pagination if specified
+	if req.Offset > 0 {
+		params.Set("offset", strconv.FormatUint(uint64(req.Offset), 10))
+	}
+
+	return fmt.Sprintf("%s%s?%s", c.baseURL, delegationsPath, params.Encode())
 }
