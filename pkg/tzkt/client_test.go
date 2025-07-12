@@ -21,8 +21,8 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		expectedDelegations := []tzkt.Delegation{
-			createTestDelegation(109, "2018-06-30T19:30:27Z", "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", 25079312620),
-			createTestDelegation(167, "2018-06-30T20:29:42Z", "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft", 10199999690),
+			createTestDelegation(1098907648, 109, "2018-06-30T19:30:27Z", "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", 25079312620),
+			createTestDelegation(1649410048, 167, "2018-06-30T20:29:42Z", "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft", 10199999690),
 		}
 
 		server := httptest.NewServer(successHandler(t, expectedDelegations))
@@ -187,10 +187,50 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		assertURLContainsParam(t, err, requestURL, "limit=10")
 		assertURLContainsParam(t, err, requestURL, "offset=50")
 	})
+
+	t.Run("it includes select parameter for necessary fields", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestURL string
+		server := newURLTrackingServer(t, &requestURL)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+
+		// Act
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit: 10,
+		})
+
+		// Assert
+		assertURLContainsParam(t, err, requestURL, "select=id,timestamp,amount,sender,level")
+	})
+
+	t.Run("it sets gzip accept-encoding header", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestHeaders http.Header
+		server := newHeaderTrackingServer(t, &requestHeaders)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+
+		// Act
+		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+			Limit: 10,
+		})
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, "gzip", requestHeaders.Get("Accept-Encoding"), "Expected gzip Accept-Encoding header")
+	})
 }
 
-func createTestDelegation(level int, timestamp, address string, amount int64) tzkt.Delegation {
+func createTestDelegation(id int64, level int, timestamp, address string, amount int64) tzkt.Delegation {
 	return tzkt.Delegation{
+		ID:        id,
 		Level:     level,
 		Timestamp: timestamp,
 		Sender: struct {
@@ -241,6 +281,19 @@ func newURLTrackingServer(t *testing.T, urlCapture *string) *httptest.Server {
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*urlCapture = r.URL.String()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`[]`))
+		require.NoError(t, err, "Failed to write response")
+	}))
+}
+
+func newHeaderTrackingServer(t *testing.T, headersCapture *http.Header) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*headersCapture = r.Header
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

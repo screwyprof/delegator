@@ -15,6 +15,9 @@ const (
 	delegationsPath  = "/v1/operations/delegations"
 	queryParamLimit  = "limit"
 	queryParamOffset = "offset"
+	queryParamSelect = "select"
+	// Select only necessary fields to minimize payload and reduce costs
+	defaultSelectFields = "id,timestamp,amount,sender,level"
 )
 
 // Sentinel errors for different failure modes
@@ -47,6 +50,7 @@ type DelegationsRequest struct {
 
 // Delegation represents a Tezos delegation from Tzkt API
 type Delegation struct {
+	ID        int64  `json:"id"`
 	Level     int    `json:"level"`
 	Timestamp string `json:"timestamp"`
 	Sender    struct {
@@ -101,14 +105,18 @@ func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*htt
 		return nil, fmt.Errorf("%w: %w", ErrMalformedRequest, err)
 	}
 
+	// Add gzip compression support to reduce bandwidth usage and improve performance
+	httpReq.Header.Set("Accept-Encoding", "gzip")
+
 	return httpReq, nil
 }
 
 func (c *Client) buildDelegationsURL(limit, offset uint) string {
+	baseURL := fmt.Sprintf("%s%s?%s=%d&%s=%s",
+		c.baseURL, delegationsPath, queryParamLimit, limit, queryParamSelect, defaultSelectFields)
+
 	if offset > 0 {
-		return fmt.Sprintf("%s%s?%s=%d&%s=%d",
-			c.baseURL, delegationsPath, queryParamLimit, limit, queryParamOffset, offset)
+		return fmt.Sprintf("%s&%s=%d", baseURL, queryParamOffset, offset)
 	}
-	return fmt.Sprintf("%s%s?%s=%d",
-		c.baseURL, delegationsPath, queryParamLimit, limit)
+	return baseURL
 }

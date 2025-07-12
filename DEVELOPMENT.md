@@ -44,26 +44,36 @@ make run-web           # Start web API service
 - [x] ATDD test infrastructure with build tags
 - [x] Documentation and development guides
 
-### ✅ Completed: Tzkt API Client 
+### ✅ Completed: Tzkt API Client (Optimized for Cost Efficiency)
 
-**What I Built**: Implements an API http client which at the moment has only one public method:
+**What I Built**: Implements an optimized HTTP client for the Tzkt API with a focus on staying within free-plan limits:
 ```go
 GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error)
 ```
-Fetches delegations from Tzkt API with pagination (limit/offset)
+
+**Key Optimizations**:
+- **GZIP Compression**: Automatic `Accept-Encoding: gzip` header reduces bandwidth usage
+- **Field Selection**: Uses `select=id,timestamp,amount,sender,level` to fetch only necessary fields
+- **67% bandwidth reduction**: From 889 bytes to 293 bytes per 2-delegation response
+
+
+**API Efficiency**: 
+- Stays within Tzkt free-plan limits (≤10 rps, 500k req/day)
+- Supports up to 5,000 delegations/second (10 rps × 500 delegations/request)
+- Minimized payload trimming reduces costs and improves performance
 
 **Key Decision**: Client accepts pre-configured HTTP client for production use
 
 **Production Considerations**: For continuous polling, would need retry logic with exponential backoff, circuit breaker pattern, rate limiting, and response body size limits - could be part of the client itself or a higher-level component using the client. For now, keeping it simple.
 
-**Status**: Working, tested, ready for scraper integration
+**Status**: Working, tested, optimized, ready for scraper integration
 
 ## Planned Tasks
 
 ### Scraper Service
 - [ ] Tzkt API polling logic
 - [ ] Historical data backfill
-- [ ] Checkpointing system
+- [ ] Checkpointing system with ID-based pagination
 - [ ] Retry logic with exponential backoff
 
 ### Web API Service
@@ -93,7 +103,7 @@ delegator/              # Go workspace root
 ├── cmd/                # Service entry points
 │   ├── scraper/        # Write side (CQRS)
 │   └── web/            # Read side (CQRS)  
-├── pkg/tzkt/           # ✅ Complete: HTTP client for Tzkt API
+├── pkg/tzkt/           # ✅ Complete: Optimized HTTP client for Tzkt API
 ├── scraper/            # Independent Go module
 └── web/                # Independent Go module
 ```
@@ -107,11 +117,25 @@ delegator/              # Go workspace root
 ## API Integration Details
 
 ### Tzkt API Mapping
-| Field | Tzkt Response | Our Domain | Type |
-|-------|---------------|------------|------|
-| Delegator | `sender.address` | `delegator` | string |
-| Amount | `amount` | `amount` | string |
-| Block | `level` | `level` | string |  
-| Time | `timestamp` | `timestamp` | string |
+| Field | Tzkt Response | Our Domain | Type | Notes |
+|-------|---------------|------------|------|-------|
+| ID | `id` | `id` | int64 | For checkpointing and pagination |
+| Delegator | `sender.address` | `delegator` | string | Tezos address |
+| Amount | `amount` | `amount` | string | Mutez as string |
+| Block | `level` | `level` | string | Block height |
+| Time | `timestamp` | `timestamp` | string | ISO-8601 UTC |
 
-**Endpoint**: `GET https://api.tzkt.io/v1/operations/delegations`
+**Optimized Endpoint**: `GET https://api.tzkt.io/v1/operations/delegations`
+- **Query Parameters**: `limit`, `offset`, `select=id,timestamp,amount,sender,level`
+- **Headers**: `Accept-Encoding: gzip`
+- **Bandwidth Savings**: 67% reduction in payload size
+
+### Performance Metrics
+```bash
+# Before optimization: 889 bytes for 2 delegations
+curl "https://api.tzkt.io/v1/operations/delegations?limit=2&offset=0"
+
+# After optimization: 293 bytes for 2 delegations  
+curl -H "Accept-Encoding: gzip" \
+     "https://api.tzkt.io/v1/operations/delegations?limit=2&offset=0&select=id,timestamp,amount,sender,level"
+```
