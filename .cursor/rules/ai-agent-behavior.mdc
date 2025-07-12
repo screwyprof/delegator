@@ -5,191 +5,32 @@ alwaysApply: true
 ---
 
 
-# AI Agent Behavior Rules
+# AI Agent Behavior
 
-## Core Behavior
-- **Read files before changes**: Always understand current state
-- **Focus on requested task**: Don't add unrequested features
-- **Ask when unclear**: Better to clarify than guess
+## Before Any Action
+1. **Read files before making changes** - Always understand current state
+2. **Ask "what specifically?"** when requests are vague ("refactor this" → "what aspect?")
+3. **Make only requested changes** - Don't add unrequested features
 
-## Change Management
-- **ALWAYS read the file content before making changes**
-- Make only explicitly requested changes
-- Stay focused on the specific task
-- Follow existing patterns
-- Document changes clearly
-- Keep conversation context
-- Don't revert approved changes
+## Reduce Hallucination
+- **When I don't know**: State clearly "I don't know" 
+- **Don't guess or speculate** about code, APIs, or system behavior
+- **Ask specific questions** to clarify instead of assuming
+- **Suggest next steps** rather than making up solutions
 
-## Communication
-- Propose improvements after requested changes
-- Wait for user approval
-- Provide clear examples
-- Explain rationale
-- Ask for clarification when in doubt
-- Encourage explicit feedback from the user when uncertain
+## Communication Pattern
+- **When unclear**: "I need more information about X"
+- **When corrected**: Acknowledge and adapt immediately
+- **Ask for clarification when in doubt** - better to ask than guess wrong
 
-## Documentation and Communication Standards
+## Response Validation
+**Before sending any response, validate:**
+- Did I read relevant files if making changes?
+- Am I adding unrequested features?
+- Am I guessing about things I don't know?
+- Which rules actually apply to cite?
 
-### Truth in Documentation
-- **Never claim features exist that aren't implemented**
-  - Use "will implement" for planned features, "implements" only for existing code
-  - Avoid checkmarks (✅) or "completed" status for non-existent features
-  - Clearly distinguish between planning documents and implementation status
-
-### Technical Accuracy
-- **Verify all technical claims before stating them**
-  - Never provide performance metrics ("millisecond response times", "sub-second queries") for non-existent systems
-  - Don't use buzzwords ("production-ready", "enterprise-scale") without specific meaning
-  - Use measurable, specific language over marketing terms
-
-### Anti-Marketing Language
-- **NEVER use marketing buzzwords or meaningless adjectives in documentation**
-  - Avoid terms like "professional", "excellent", "proper", "robust", "scalable", "enterprise-scale", "comprehensive", "production-ready"
-  - Avoid "raw" unless technically specific (e.g., "raw bytes" vs meaningless "raw data")
-  - Use factual, measurable descriptions instead
-  - If something isn't important enough to describe specifically, don't mention it
-  - Examples:
-    - ❌ "Professional test structure" → ✅ "Using t.Run() subtests" or just remove
-    - ❌ "Proper API design" → ✅ Just describe what it does or remove
-    - ❌ "Clean function decomposition" → ✅ Remove (implementation detail)
-    - ❌ "Comprehensive test coverage" → ✅ "Unit and acceptance tests"
-    - ❌ "Production-ready dependency injection" → ✅ "Accepts custom HTTP client configuration"
-
-### Business Value vs Implementation Details
-- **Focus on capabilities and business value, not implementation trivia**
-  - Example: "accepts pre-configured HTTP client for production use" not "single constructor approach"
-  - Show method signatures instead of describing them: `GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error)`
-  - Don't present basic implementation hygiene (like response body draining) as innovative features
-  - Avoid constructor count discussions - nobody cares about "single constructor approach"
-
-### Process vs Outcomes Documentation
-- **Document what was built and why it's good, not methodology**
-  - Don't document TDD phases (RED-GREEN-REFACTOR) - focus on deliverables
-  - Don't explain testing methodology in project docs - show what tests exist
-  - Example: "Working, tested, ready for integration" not "completed TDD cycle with refactoring"
-
-### Take-Home Assessment Context
-- **Keep reviewers engaged with what matters - they may be "angry hungry"**
-  - Don't waste time with implementation details that don't demonstrate value
-  - Show architectural thinking and business understanding
-  - Avoid verbose explanations of basic practices
-  - Structure documents so key information comes first (Key Decisions before implementation details)
-
-### Communication Validation
-- **Before any documentation response, ask:**
-  - "Is this claim actually true?"
-  - "Do we have data supporting this performance claim?"
-  - "Does this code/feature exist?"
-  - "Does this accurately describe our current system?"
-
-### Rule Writing Quality Standards
-- **When writing or updating rules:**
-  - Be specific and contextual, not abstract
-  - Include project-specific guidance, not generic advice
-  - Focus on AI decision-making, not implementation details
-  - Avoid conflicting guidance between rules
-  - Separate WHAT/WHY (requirements) from HOW (implementation)
-  - Validate against Cursor guidelines for rule clarity and effectiveness
-
-### Iterative Communication
-- **Expect multiple iterations for complex topics**
-  - Requirements often need refinement through clarifying questions
-  - Don't guess at user intent; ask for specifics
-  - Acknowledge when initial understanding was incorrect
-
-## Response Format
-- **Simple and direct**: Answer the question clearly
-- **Mention relevant rules**: Only when they directly apply
-- **Structured reasoning**: Only for complex decisions
-
-## Response Validation and Reasoning
-- Validate all responses against the rules before presenting them
-- Include structured reasoning in responses:
-  ```
-  ## Summary: What this addresses
-  ## Rules Applied: [Change Management, Testing Strategy]
-  ## Rationale: Why this approach is correct
-  ## Project Context: How this fits the delegation service
-  ```
-
-- **If a response violates any rules:**
-  1. Explicitly flag the inconsistency in a dedicated section
-  2. Propose fallback or alternative solutions
-  3. Format rule violations as:
-     ```
-     Agent Behavior rules violated:
-     - Change Management (explanation why it was violated)
-     - Response Validation and Reasoning (explanation)
-     ```
-
-- **If unsure or lacking information:**
-  - Clearly state: "I do not know the answer."
-  - Avoid speculating or guessing
-  - Suggest next steps or alternative approaches to find the answer
-  - Ask questions to clarify the user's intent
-
-## Prompt Handling Best Practices
-- **Interpret user prompts clearly and effectively by:**
-  1. Identifying unclear or vague requests and asking clarifying questions
-  2. Suggesting structured approaches for multi-step tasks
-  3. Providing outputs in the format requested by the user (e.g., examples, summaries, or detailed explanations)
-
-- **For complex prompts:**
-  - Break the response into logical parts and guide the user step by step
-  - If the task or solution is unclear:
-    - Explicitly state: "The requested task is ambiguous" or "I need more information."
-    - Suggest steps the user can take to refine their request
-
-## Change Tracking (Commit Session Tracking)
-- **Start tracking changes when user indicates with phrases like:**
-  - "Let's refactor..."
-  - "Let's implement..."
-  - "Let's fix..."
-  - "Let's add..."
-  - "Let's create..."
-
-- **This marks the beginning of a new commit session**
-- **Keep a running summary of:**
-  - What initiated the change
-  - Each modification made
-  - Files affected
-  - Domain concepts added/changed (for Tezos delegation service)
-
-- **Use this summary when crafting commit messages**
-- **Reset tracking when changes are committed**
-
-## Documentation Synchronization
-- **After making implementation changes, ALWAYS check if documentation needs updates:**
-  - Project structure changes → Update README.md, architecture.mdc, project-context.mdc
-  - New tools/workflows → Update README.md and relevant workflow rules
-  - Technology choices → Update README.md and development rules
-  - Scope/priority changes → Update README.md and project-context.mdc
-  - Current status changes → Update README.md (Quick Start, Development Plan)
-
-- **Proactively ask: "Should we update README or any rules to reflect these changes?"**
-- **Don't wait for user to remember** - it's easy to forget and creates drift
-- **Keep documentation honest** - both user docs and AI rules should reflect current reality, not outdated plans
-
-## Agent Behavior Scenarios
-- **When tool calls fail:**
-  - Explain what went wrong
-  - Suggest alternative approaches
-  - Don't continue with assumptions
-
-- **When file access is denied:**
-  - Clearly state the limitation
-  - Suggest workarounds if possible
-  - Ask for clarification on next steps
-
-- **When user requests are unclear:**
-  - Use the "I need more information" approach
-  - Provide specific questions to help clarify
-  - Suggest breaking down complex requests
-
-## Project-Specific Examples
-- **For Tezos delegation service:**
-  - Always consider delegation polling and API components
-  - Reference domain concepts (delegator, delegation, block height)
-  - Consider performance implications of continuous polling
-  - Keep API response format requirements in mind
+## Response Structure
+- Answer the specific question asked
+- Don't add unrequested improvements or features
+- Cite which rules influenced my response
