@@ -16,7 +16,7 @@ VERSION ?= $(shell \
 # Build configuration
 GO_FILES := $(shell find . -name "*.go" | grep -v vendor)
 TEST_FLAGS := -race -parallel 4 -v
-TEST_PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
+PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
 
 # Colors for output
 OK_COLOR := \033[32;01m
@@ -62,25 +62,25 @@ tools: ## List all installed development tools
 
 fmt: ## Format Go code and organize imports
 	@echo -e "$(OK_COLOR)--> Formatting Go code$(NO_COLOR)"
-	@go mod tidy && \
+	@go work sync && \
 	 go tool gofumpt -l -w . && \
 	 go tool gci write $(GO_FILES) -s standard -s default -s "prefix($(LOCAL_PACKAGES))"
 
 lint: ## Run golangci-lint static analysis
 	@echo -e "$(OK_COLOR)--> Running static analysis$(NO_COLOR)"
-	@go tool golangci-lint run $(TEST_PACKAGES)
+	@go tool golangci-lint run $(PACKAGES)
 
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
 test: ## Run unit tests with race detection
 	@echo -e "$(OK_COLOR)--> Running unit tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) $(TEST_PACKAGES)
+	@go test $(TEST_FLAGS) $(PACKAGES)
 
 test-all: test test-acceptance ## Run all tests (unit + acceptance)
 
 coverage: ## Run tests and show coverage report
 	@echo -e "$(OK_COLOR)--> Generating coverage report$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $(TEST_PACKAGES) && \
+	@go test $(TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $(PACKAGES) && \
 	 go tool cover -func=coverage.out && \
 	 go tool cover -html=coverage.out -o coverage.html && \
 	 echo -e "$(OK_COLOR)Coverage report: coverage.html$(NO_COLOR)"
@@ -111,7 +111,7 @@ clean: ## Clean build artifacts and generated files
 
 test-acceptance: ## Run all acceptance tests
 	@echo -e "$(OK_COLOR)--> Running acceptance tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -tags=acceptance $(TEST_PACKAGES)
+	@go test $(TEST_FLAGS) -tags=acceptance $(PACKAGES)
 
 test-acceptance-pkg: ## Run pkg/ acceptance tests (external API)
 	@echo -e "$(OK_COLOR)--> Running pkg/ acceptance tests$(NO_COLOR)"

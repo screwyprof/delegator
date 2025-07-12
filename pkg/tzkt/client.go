@@ -18,7 +18,7 @@ const (
 	delegationsPath  = "/v1/operations/delegations"
 	queryParamLimit  = "limit"
 	queryParamSelect = "select"
-	// Select only necessary fields to minimize payload and reduce costs
+	// Select only necessary fields to minimize payload
 	defaultSelectFields = "id,timestamp,amount,sender,level"
 )
 
@@ -108,9 +108,6 @@ func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*htt
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMalformedRequest, err)
 	}
-
-	// Add gzip compression support to reduce bandwidth usage and improve performance
-	httpReq.Header.Set("Accept-Encoding", "gzip")
 
 	return httpReq, nil
 }

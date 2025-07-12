@@ -4,8 +4,8 @@
 > • Scraper → Postgres ← Web API  
 > • `make run` starts the whole stack  
 > • 80 % test coverage, lint & fmt clean  
-> • Fits Tzkt free-plan limits (10 req/s, 500 k req/day)
-
+> • Fits Tzkt free-plan limits (10 req/s, 500 k req/day)  
+> • **Key insight**: Tzkt API rich filtering (`id.gt`, `timestamp.ge`, etc.) eliminates pagination complexity, gzip can be used to save trafic
 
 The full exercise brief is in [TASK.md](TASK.md).  
 In short, this implementation will:
@@ -92,16 +92,17 @@ The following items are implemented for the demo. They deliver a working slice o
   * `amount` (string) – Tzkt returns an integer number of **mutez** (1 XTZ = 1 000 000 mutez). We expose that integer as a string—exactly like the task example (no decimal point).
   * `delegator` (sender.address)
   * `level` (block.height)
-* Startup back-fill: fetch last 1 000 delegations **or** ≤ 14 days using `timestamp.ge=<now-LOOKBACK_HOURS>`.
-* Chunked fetching: page in chunks of `DELEGATIONS_PER_CHUNK` rows (default **500**).
-* Continuous catch-up loop every `SCRAPER_INTERVAL` (default **10s**).
-* Initial query window set by `LOOKBACK_HOURS` (default **336** ≈ 14 days) using `timestamp.ge` filter.
-* Subsequent cycles use `id.gt=LAST_PROCESSED_ID` to fetch only new delegations.
-* Network robustness: simple retry with fixed back-off (max 3 attempts) on transport errors or 5xx.
-* Rate-limit awareness – scraper enforces `SCRAPER_RPS_LIMIT` (≤10) and honours `Retry-After`; falls back to 1 rps when soft daily cap reached.
-* Payload trimming – always append `select=id,timestamp,amount,sender.address,level` and send `Accept-Encoding: gzip`.
-* Checkpointing – maintains `LAST_PROCESSED_ID` in `scraper_checkpoint` table for resumability.
-* Operate continuously; duplicate prevention via composite primary key `(level, delegator)`.
+* **Startup back-fill**: fetch last 1 000 delegations **or** ≤ 14 days using `timestamp.ge=<now-LOOKBACK_HOURS>`.
+* **Chunked fetching**: page in chunks of `DELEGATIONS_PER_CHUNK` rows (default **500**).
+* **Continuous polling**: catch-up loop every `SCRAPER_INTERVAL` (default **10s**).
+* **Smart filtering**: tzkt API supports rich filtering (`id.gt`, `timestamp.ge`, `id.le`, etc.) enabling gap-free pagination and duplicate prevention
+* **Network robustness**: simple retry with fixed back-off (max 3 attempts) on transport errors or 5xx.
+* **Rate-limit awareness**: scraper enforces `SCRAPER_RPS_LIMIT` (≤10) and honours `Retry-After`; falls back to 1 rps when soft daily cap reached.
+* **Payload optimization**: always append `select=id,timestamp,amount,sender.address,level`
+* **Checkpointing**: maintains `LAST_PROCESSED_ID` in `scraper_checkpoint` table for resumability.
+* **Duplicate prevention**: database `UNIQUE(id)` constraint handles edge cases.
+* **Pagination strategy**: `timestamp.ge` for backfill, `id.gt=lastID` for live polling.
+* **Production validation**: successfully processes real Tezos delegation data (~5-6 delegations per hour, 132 in 24h is normal rate).
 
 ### Web API – read side
 1. Endpoint `GET /xtz/delegations`.
@@ -148,15 +149,17 @@ Field mapping (Tzkt → internal):
 ### 4.2 Database Schema (Demo)
 ```sql
 CREATE TABLE delegations (
-  id BIGINT PRIMARY KEY,
+  id BIGINT PRIMARY KEY,           -- Tzkt operation ID (unique, strictly increasing)
   timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-  amount BIGINT NOT NULL,
-  delegator TEXT NOT NULL,
-  level BIGINT NOT NULL,
+  amount BIGINT NOT NULL,          -- Amount in mutez 
+  delegator TEXT NOT NULL,         -- sender.address from Tzkt
+  level BIGINT NOT NULL,           -- Block level/height
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Query optimization indexes
 CREATE INDEX idx_delegations_year ON delegations ((date_part('year', timestamp)));
+CREATE INDEX idx_delegations_timestamp ON delegations (timestamp);
 
 -- Scraper checkpoint
 CREATE TABLE scraper_checkpoint (
@@ -168,7 +171,7 @@ CREATE TABLE scraper_checkpoint (
 ## 5 Testing Strategy
 * **Acceptance test** – starts the Web API (with test data) and verifies the HTTP contract; executed via `make test-acceptance`.
 * **Unit tests** – cover both services: scraper polling/retry logic, DAO functions, and Web API handlers/validators.
-* **Execution** – `make test` runs all modules’ tests (`./...`) with race detector, verbose output, and parallel tests.
+* **Execution** – `make test` runs all modules’ tests  with race detector, verbose output, and parallel tests.
 * **Coverage** – aim ≥80 % on non-generated code; reported in test output.
 * **TDD discipline** – RED → GREEN → REFACTOR cycle; acceptance first, then unit tests.
 
@@ -180,7 +183,12 @@ Quality tools (`make fmt`, `make lint`, `make test`) run across the entire works
 
 ## 6 Production Evolution
 
-### 6.1 Data-Processing Pipeline
+### 6.1 Current Production Status
+* **Data collection**: Scraper successfully fetches and processes real Tezos delegation data from Tzkt API.
+* **API integration**: Handles both small uncompressed (≤5 records) and large `gzip` compressed responses.
+* **Persistence limitation**: Current implementation uses mock store - requires real database integration for production persistence.
+
+### 6.2 Data-Processing Pipeline
 ```
 Scraper → Raw DB → Normalizer → Normalized DB → Web API
                          ↓

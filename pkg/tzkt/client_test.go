@@ -286,25 +286,6 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		// Assert
 		assertTimestampFilterPresent(t, err, requestURL, timestampFilter)
 	})
-
-	t.Run("it sets gzip accept-encoding header", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		var requestHeaders http.Header
-		server := newHeaderTrackingServer(t, &requestHeaders)
-		defer server.Close()
-
-		client := newClientWithServer(server)
-
-		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
-			Limit: 10,
-		})
-
-		// Assert
-		assertGzipCompressionRequested(t, err, requestHeaders)
-	})
 }
 
 func createTestDelegation(id int64, level int, timestamp, address string, amount int64) tzkt.Delegation {
@@ -360,19 +341,6 @@ func newURLTrackingServer(t *testing.T, urlCapture *string) *httptest.Server {
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*urlCapture = r.URL.String()
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`[]`))
-		require.NoError(t, err, "Failed to write response")
-	}))
-}
-
-func newHeaderTrackingServer(t *testing.T, headersCapture *http.Header) *httptest.Server {
-	t.Helper()
-
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		*headersCapture = r.Header
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -453,10 +421,4 @@ func assertTimestampFilterPresent(t *testing.T, err error, requestURL string, ex
 	// Note: URL encoding will encode : as %3A, so we check for the core timestamp components
 	assert.Contains(t, requestURL, "timestamp.ge=", "Expected backfill filtering from timestamp")
 	assert.Contains(t, requestURL, "2024-12-01T10", "Expected backfill from time %v", expectedTime)
-}
-
-func assertGzipCompressionRequested(t *testing.T, err error, requestHeaders http.Header) {
-	t.Helper()
-	require.NoError(t, err)
-	assert.Equal(t, "gzip", requestHeaders.Get("Accept-Encoding"), "Expected gzip Accept-Encoding header for bandwidth optimization")
 }
