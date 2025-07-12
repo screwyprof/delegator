@@ -6,26 +6,131 @@ alwaysApply: false
 
 # Testing Conventions
 
-## Package Structure
-- Use `package <module>_test` for behavior testing (not `package <module>`)
-- Export internal methods (capitalize) for testability when needed
+## Package Structure & Naming
+- Use `package <module>_test` for behavior testing (not `package <module>`)  
+- Use descriptive test names with "it" prefix: `"it parses successful response"`, `"it uses timestamp filtering for initial backfill request"`
 
-## Test Organization
-- Follow Arrange-Act-Assert structure with clear comments
-- Use `t.Run()` with `t.Parallel()` for all tests and subtests
-- Create named helper functions with `t.Helper()` calls
+## Test Organization & Structure
 
-## Assertions
-- Use `require` for critical assertions that should stop test execution
-- Use `assert` for non-critical assertions that allow test continuation
-- Provide descriptive error messages for assertions
+### Behavioral Grouping
+- Group related tests by behavior: `TestServiceBackfillBehavior`, `TestServiceLivePollingBehavior`  
+- Use `t.Run()` with descriptive behavior descriptions  
+- Follow consistent naming: `func TestComponentBehaviorCategory(t *testing.T)`
 
-## Test Quality
-- Write deterministic tests, avoid timeout-based synchronization
-- Target ≥80% test coverage
-- Test individual methods directly rather than relying on integration timeouts
-- Use proper test synchronization instead of sleep/timeout patterns
+### Arrange-Act-Assert Pattern
+- Always follow AAA structure with explicit comments:
+```go
+// Arrange
+client := createMockClientWithResponses(data)
+
+// Act  
+result := service.DoSomething()
+
+// Assert
+assertExpectedBehavior(t, result)
+```
+
+## Parallel Execution
+- Use `t.Parallel()` for **all** tests and sub-tests  
+- Design tests to run concurrently without conflicts  
+- Ensure resource isolation between parallel tests
+
+## Helper Functions & Test Infrastructure
+
+### Test Setup Helpers
+- Factory functions: `createTestDelegation()`, `createMockClientWithResponses()`  
+- Configuration builders: `createTestConfig()`, `createTestConfigWithChunkSize()`  
+- Service builders: `createTestService(client, store, config)`
+
+### Action Helpers
+- Abstract common operations: `runServiceBriefly(t, service)`  
+- Mark every helper with `t.Helper()`  
+- Handle context creation and cleanup properly
+
+### Custom Assertion Helpers
+- Domain-specific assertions: `assertFirstRequestUsesTimestampFilter()`  
+- Descriptive names that express the business rule  
+- Include helpful error messages  
+- Use `t.Helper()` inside each assertion helper
+
+## Assertion Strategy
+- Use **`require`** for critical assertions that must halt the test  
+- Use **`assert`** for non-critical checks that may continue execution  
+- Always provide descriptive messages  
+- Extract complex logic into helper assertions
+
+## Mock & Test Data Management
+
+### Mock Implementations
+- Realistic mocks capturing request/response patterns  
+- Track interactions for verification (e.g., `requests []tzkt.DelegationsRequest`)  
+- Support multiple response scenarios via slices/queues
+
+### Test Data Builders
+- Factory functions create deterministic, realistic fixtures  
+- Avoid hard-coding large structs inline; keep tests readable
+
+### HTTP Test Infrastructure
+- Use `httptest.NewServer()` to stub external APIs  
+- Provide specialised handlers for success, error, malformed payloads  
+- Always set correct headers and status codes
+
+## File Structure Pattern
+1. **Test functions** (grouped by behaviour)  
+2. **Test setup helpers** (fixture builders, mocks)  
+3. **Action helpers** (run services/handlers)  
+4. **Assertion helpers** (verify behaviour)  
+5. **Mock implementations** (bottom of file)
+
+## Context & Resource Management
+- Use `context.WithTimeout()` to bound long-running operations  
+- Clean up resources with `defer server.Close()` / `defer cancel()`  
+- Each test must own its resources—no shared state  
+- Handle expected `context.Canceled` / `context.DeadlineExceeded` gracefully
+
+## Error Handling in Tests
+- Cover both happy-path and failure scenarios  
+- Verify specific error types with `errors.Is` / `assert.ErrorIs`  
+- Provide custom helpers like `assertAPIError` for repetitive patterns
+
+## Test Quality Principles
+- **Deterministic** - no timeouts/sleeps; rely on explicit synchronisation  
+- **Isolated** - tests can run in any order and in parallel  
+- **Readable** - tests act as living documentation  
+- **Maintainable** - helpers reduce duplication  
+- **Comprehensive** - success & failure paths covered  
+- **Fast** - minimised external IO, heavy use of `t.Parallel()`
 
 ## Test Execution
-- Include both race detection and parallel execution
-- Tests should run reliably in parallel without conflicts
+- Always run with the race detector and coverage:  
+  `go test ./... -race -covermode=atomic -coverprofile=coverage.out`  
+- Fail CI if overall coverage falls below **80 %**  
+- Upload coverage reports (e.g., Codecov) for visibility
+
+## Behaviour Specification Style ("It" phrasing)
+- Describe each `t.Run` with an English sentence starting with **"it"**:  
+  `"it returns an error for invalid URL"`  
+- Keep focus on observable behaviour, not implementation details  
+- Align AAA comments with the "it" statement:  
+  * **Arrange** - set up state  
+  * **Act** - perform the action  
+  * **Assert** - verify the expectation  
+- Use `t.Run("it <behaviour>", ...)` consistently
+
+## File & Directory Naming
+- Unit tests: same directory, `<file>_test.go`  
+- Integration/E2E tests: `integration/` or `e2e/`, tagged `//go:build integration`
+
+## TDD Workflow Principles
+1. **Red** - write a failing test that expresses the desired behaviour  
+2. **Green** - implement just enough code to pass  
+3. **Refactor** - improve code & tests without changing behaviour  
+4. Commit once the suite is green
+
+## Additional Best-Practice Notes
+- Avoid testing unexported/private state; focus on public behaviour  
+- Prefer dependency injection over globals for easier mocking  
+- Each test should check one logical outcome  
+- Minimise logging in tests; rely on assert/require messages  
+- For concurrency, coordinate with `sync.WaitGroup` or channels—never `time.Sleep`  
+- Test helpers must not contain production logic
