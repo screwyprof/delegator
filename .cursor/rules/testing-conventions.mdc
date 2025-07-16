@@ -13,10 +13,14 @@ alwaysApply: false
 ## Test Organization & Structure
 
 ### Behavioral Grouping
-- Group related tests by behavior: `TestServiceBackfillBehavior`, `TestServiceLivePollingBehavior`  
+- Group related tests by behavior: `TestServiceSyncBehavior`, `TestServiceObservabilityCallbacks`  
 - Use `t.Run()` with descriptive behavior descriptions  
 - Follow consistent naming: `func TestComponentBehaviorCategory(t *testing.T)`
 
+### Test Method Naming Evolution
+- **Match terminology to implementation**: Test names should reflect the public API, not internal concepts
+- **Focus on what's being tested**: If testing `SyncDelegations()`, name tests around sync behavior
+s
 ### Arrange-Act-Assert Pattern
 - Always follow AAA structure with explicit comments:
 ```go
@@ -35,6 +39,50 @@ assertExpectedBehavior(t, result)
 - Design tests to run concurrently without conflicts  
 - Ensure resource isolation between parallel tests
 
+## Interface Segregation for Testing
+- **Prefer interface-based testing**: Use specific interfaces rather than full orchestrator methods
+- **Test single concerns**: Call `SyncDelegations()` directly rather than `Run()` with timeouts
+- **Interface segregation enables mocking**: Split responsibilities into focused interfaces:
+  ```go
+  // Example from scraper service refactoring
+  type DelegationSyncer interface {
+      SyncDelegations(ctx context.Context) error  // Core sync logic
+  }
+  type DelegationPoller interface {
+      PollDelegations(ctx context.Context) error  // Polling with intervals  
+  }
+  type ServiceRunner interface {
+      Run(ctx context.Context) error              // Orchestrator
+  }
+  ```
+- **Single implementation, multiple interfaces**: One struct can implement all interfaces for production use while enabling focused testing
+- **Mock specific interfaces**: Test each concern in isolation with targeted mocks
+- **Test the right abstraction**: Test `SyncDelegations()` for business logic, not `Run()` for orchestration timing
+
+## Deterministic Testing (Anti-Patterns to Avoid)
+- **NEVER use timeout-based testing**: Avoid `context.WithTimeout()` for controlling test flow
+- **NEVER use `time.Sleep()` in tests**: Use explicit synchronization instead
+- **Avoid orchestrator testing for unit tests**: Test specific methods, not full service workflows
+- **Bad example** (from scraper service before refactoring):
+  ```go
+  // BAD: Flaky, timing-dependent, tests orchestration not logic
+  func runServiceBriefly(t *testing.T, service *scraper.Service) {
+      ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+      defer cancel()
+      err := service.Run(ctx) // Testing orchestrator timing, not business logic
+      // Test passes/fails based on 50ms timing - FLAKY!
+  }
+  ```
+- **Good example** (after refactoring):
+  ```go
+  // GOOD: Deterministic, tests specific behavior, immediate results
+  ctx := t.Context()
+  err := service.SyncDelegations(ctx) // Test core business logic directly
+  require.NoError(t, err)
+  // Test result is immediate and deterministic
+  ```
+- **Key insight**: We eliminated `runServiceBriefly()` entirely and tested `SyncDelegations()` directly, making tests 100% deterministic
+
 ## Helper Functions & Test Infrastructure
 
 ### Test Setup Helpers
@@ -43,8 +91,8 @@ assertExpectedBehavior(t, result)
 - Service builders: `createTestService(client, store, config)`
 
 ### Action Helpers
-- Abstract common operations: `runServiceBriefly(t, service)`  
-- Mark every helper with `t.Helper()`  
+- Abstract common operations but avoid timeout-based helpers
+- Mark every helper with `t.Helper()` if it takes `*testing.T`
 - Handle context creation and cleanup properly
 
 ### Custom Assertion Helpers
@@ -83,10 +131,12 @@ assertExpectedBehavior(t, result)
 5. **Mock implementations** (bottom of file)
 
 ## Context & Resource Management
-- Use `context.WithTimeout()` to bound long-running operations  
+- **Use `t.Context()` for test contexts**: Provides proper test lifecycle management
+- **NEVER use `context.Background()` in tests**: Loses test cancellation and cleanup
+- **Avoid `context.WithTimeout()` for test control**: Use for bounded operations only
 - Clean up resources with `defer server.Close()` / `defer cancel()`  
 - Each test must own its resources—no shared state  
-- Handle expected `context.Canceled` / `context.DeadlineExceeded` gracefully
+- Handle expected `context.Canceled` / `context.DeadlineExceeded` gracefully when testing cancellation
 
 ## Error Handling in Tests
 - Cover both happy-path and failure scenarios  
@@ -100,6 +150,7 @@ assertExpectedBehavior(t, result)
 - **Maintainable** - helpers reduce duplication  
 - **Comprehensive** - success & failure paths covered  
 - **Fast** - minimised external IO, heavy use of `t.Parallel()`
+- **Interface-focused** - test specific concerns, not orchestrators
 
 ## Test Execution
 - Always run with the race detector and coverage:  
@@ -134,3 +185,5 @@ assertExpectedBehavior(t, result)
 - Minimise logging in tests; rely on assert/require messages  
 - For concurrency, coordinate with `sync.WaitGroup` or channels—never `time.Sleep`  
 - Test helpers must not contain production logic
+- Use interface segregation to enable focused, deterministic testing
+- Test specific interface methods rather than orchestrator workflows

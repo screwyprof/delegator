@@ -28,7 +28,6 @@ Requirements: Go 1.24+, Docker + Compose.
 
 
 ## Non-Goals
-* Importing the entire historical delegation dataset.
 * High-availability & resilience.
 * Event-driven ETL pipelines.
 * Production-grade instrumentation.
@@ -47,8 +46,8 @@ Scraper → PostgreSQL ← Web API
 * **Single DB for demo** – simple to run; future evolution adds Normalizer + separate read DB 
 
 ### Scraper
-* Startup back-fill: last 1 000 delegations or 14 days of history.
-* Chunked fetch (`limit=500`) + rate limiter (`SCRAPER_RPS_LIMIT`).
+* Startup back-fill: controlled via checkpoint system (0 = all data, higher ID = demo subset).
+* Chunked fetch (`limit=10000`) + natural rate limiting for live polling (10s intervals).
 * Retries with back-off; stores `LAST_PROCESSED_ID` checkpoint.
 * **Production validated**: successfully processes real Tezos delegation data.
 
@@ -60,7 +59,7 @@ Scraper → PostgreSQL ← Web API
 ---
 
 ## Testing
-* **Unit + Acceptance** – `make test` (race, verbose, coverage ≥ 80%).
+* **Unit + Acceptance** – `make test` (race, verbose) and `make coverage` (with console text and HTML report).
 * **Testing patterns** – follows behavior testing, parallel execution, proper helper functions.
 * **Deterministic synchronization** – direct method testing instead of timeout-based coordination.
 * Quality gates – `make check`
@@ -68,6 +67,6 @@ Scraper → PostgreSQL ← Web API
 ## Production Status
 * ✅ **Data collection**: Successfully fetches and processes real Tezos delegation data
 * ✅ **API integration**: Handles both small and large responses with proper gzip decompression  
-* ✅ **Rate limiting**: Respects Tzkt API limits and processes normal delegation volumes
+* ✅ **Rate limiting**: Live polling naturally respects API limits (10s intervals). Backfill documents limitation for production use.
 
 ---

@@ -4,8 +4,8 @@
 > • Scraper → Postgres ← Web API  
 > • `make run` starts the whole stack  
 > • 80 % test coverage, lint & fmt clean  
-> • Fits Tzkt free-plan limits (10 req/s, 500 k req/day)  
-> • **Key insight**: Tzkt API rich filtering (`id.gt`, `timestamp.ge`, etc.) eliminates pagination complexity, gzip can be used to save trafic
+> • Designed for Tzkt free-plan limits (10 req/s, 500 k req/day) - production would need additional throttling  
+> • **Key insight**: Tzkt API rich filtering (`id.gt`) eliminates pagination complexity, unified ID-based approach simplifies architecture
 
 The full exercise brief is in [TASK.md](TASK.md).  
 In short, this implementation will:
@@ -14,22 +14,22 @@ In short, this implementation will:
 2. Persist them in PostgreSQL  
 3. Serve them via `GET /xtz/delegations`, supporting pagination and an optional `year` filter
 
-The demo stays within the free-plan limits of Tzkt (10 req/s, 500 k req/day) and focuses on clean architecture and test-driven development. Future enhancements—full historical back-fill, resilience, observability—are described in “Production Evolution”.
+The demo is designed for the free-plan limits of Tzkt (10 req/s, 500 k req/day) and focuses on clean architecture and test-driven development. Live polling naturally respects these limits, though backfill would need additional throttling for production use. Future enhancements such as resilience or observability described in "Production Evolution".
 
 ---
 
 ## Goals
 * Deliver an end-to-end delegation flow demo with two Go services and PostgreSQL.
-* Stay inside the free Tzkt API tier (≤10 rps, 500 k requests/day).
+* Design for the free Tzkt API tier (≤10 rps, 500 k requests/day) - live polling complies, backfill documents limitation.
 * Maintain simple, readable code with ≥80 % test coverage and passing lint/format gates.
 * Showcase a clear CQRS split: Scraper (write) and Web API (read).
 
 ## Non-Goals
-* Importing the entire historical delegation dataset (only last 1 000 delegations or ≤14 days).
+* Importing the entire historical delegation dataset (controlled via checkpoint system).
 * High-availability or multi-region deployment concerns.
 * Advanced security hardening (auth, TLS termination, WAF).
 * Additional API endpoints—only `GET /xtz/delegations` is implemented.
-* Event-driven pipeline components (Normalizer, sharding, etc.)—outlined only in “Production Evolution”.
+* Event-driven pipeline components (Normalizer, sharding, etc.)—outlined only in "Production Evolution".
 
 ---
 
@@ -52,36 +52,43 @@ Scraper → PostgreSQL ← Web API
 
 ---
 
-## 2 Project Structure (Demo Layout)
-Uber-style monorepo with independent Go modules with clear boundaries.
+## 2 System Architecture
 
 ```
-delegator/                     # Go workspace with independend modules
-├── Makefile                   # Build and development tasks
-├── cmd/
-│   ├── scraper/main.go        # Scraper service entry point
-│   └── web/main.go            # Web API entry point
-├── scraper/                   # Write side (independent Go module)
-│   ├── poller/                # Polling loop that uses pkg/tzkt client
-│   ├── delegation/            # Domain models and handlers
-│   └── store/                 # Data persistence layer
-├── web/                       # Read side (independent Go module)
-│   ├── handler/               # HTTP handlers & routing
-│   ├── store/                 # Query logic
-├── pkg/                       # Shared libraries (independent Go module)
-│   ├── tzkt/                  # Reusable Tzkt HTTP client
-└── docker-compose.yaml        # Local dev stack
+Scraper → PostgreSQL ← Web API
+```
+
+* **Write path** – Scraper polls Tzkt API and persists delegation data
+* **Read path** – Web API serves delegation data with pagination and filtering  
+* **Storage** – PostgreSQL with optimized bulk inserts and automatic migrations
+* **Observability** – Event-driven logging for operational visibility
+* **Configuration** – Environment-based setup for demo, test, and production scenarios
+
+## 3 Project Structure
+
+Go workspace with independent modules:
+
+```
+delegator/
+├── cmd/                       # Service entry points
+│   ├── scraper/               # Scraper service
+│   └── web/                   # Web API service
+├── scraper/                   # Write-side module
+├── web/                       # Read-side module  
+├── pkg/                       # Shared utilities
+├── migrations/                # Database schema
+└── docker-compose.yaml        # Local development stack
 ```
 
 ---
 
-## 3 Build Scope
+## 4 Build Scope
 
 The following items are implemented for the demo. They deliver a working slice of the overall delegation service while staying within the public `Tzkt API` limits (10 req/s, 500 k req/day). Extended capabilities like full historical back-fill, advanced resilience, observability are outlined later in Production Evolution.
 
 ### General Environment
 * **Local run** – `make run` starts Docker Compose with both services and PostgreSQL.
-* **Developer checks** – `make fmt`, `make lint`, and `make test` (race detector, verbose, coverage report) must pass before commit.
+* **Developer checks** – `make fmt`, `make lint`, and `make test` (race detector, verbose) must pass before commit. Use `make coverage` for detailed coverage reports with HTML output.
 * **Shared env** – `.env` file must at least define `DB_DSN` used by both services.
 
 
@@ -92,16 +99,22 @@ The following items are implemented for the demo. They deliver a working slice o
   * `amount` (string) – Tzkt returns an integer number of **mutez** (1 XTZ = 1 000 000 mutez). We expose that integer as a string—exactly like the task example (no decimal point).
   * `delegator` (sender.address)
   * `level` (block.height)
-* **Startup back-fill**: fetch last 1 000 delegations **or** ≤ 14 days using `timestamp.ge=<now-LOOKBACK_HOURS>`.
-* **Chunked fetching**: page in chunks of `DELEGATIONS_PER_CHUNK` rows (default **500**).
+* **Event streaming**: Service emits 7 lifecycle events for complete observability
+  * `BackfillStarted` / `BackfillDone` / `BackfillError` – backfill phase
+  * `PollingStarted` / `PollingCycle` / `PollingShutdown` / `PollingError` – polling phase
+  * **Enhanced shutdown tracking**: `PollingShutdown.Reason` captures context error for operational intelligence (graceful vs timeout scenarios)
+* **Startup back-fill**: fetch delegations starting from stored checkpoint (0 = all data, higher ID = demo subset).
+* **Chunked fetching**: page in chunks of `DELEGATIONS_PER_CHUNK` rows (default **500** for demo, **10,000** for production).
 * **Continuous polling**: catch-up loop every `SCRAPER_INTERVAL` (default **10s**).
 * **Smart filtering**: tzkt API supports rich filtering (`id.gt`, `timestamp.ge`, `id.le`, etc.) enabling gap-free pagination and duplicate prevention
-* **Network robustness**: simple retry with fixed back-off (max 3 attempts) on transport errors or 5xx.
-* **Rate-limit awareness**: scraper enforces `SCRAPER_RPS_LIMIT` (≤10) and honours `Retry-After`; falls back to 1 rps when soft daily cap reached.
+* **Pure business logic**: Service has no logging dependencies; all observability via event streaming
+* **Rate-limit awareness**: Live polling naturally respects limits (10s intervals). Backfill has no throttling for demo simplicity but documents the limitation for production use.
 * **Payload optimization**: always append `select=id,timestamp,amount,sender.address,level`
-* **Checkpointing**: maintains `LAST_PROCESSED_ID` in `scraper_checkpoint` table for resumability.
+* **Checkpointing**: maintains `LAST_PROCESSED_ID` for resumability via `Store.LastProcessedID()`
+* **Atomic persistence**: `SaveBatch()` operations provide transaction-like guarantees and update checkpoint
 * **Duplicate prevention**: database `UNIQUE(id)` constraint handles edge cases.
-* **Pagination strategy**: `timestamp.ge` for backfill, `id.gt=lastID` for live polling.
+* **Pagination strategy**: unified `id.gt=lastID` for both backfill and live polling.
+* **Clean shutdown**: `Start()` returns events channel and done channel for proper lifecycle management
 * **Production validation**: successfully processes real Tezos delegation data (~5-6 delegations per hour, 132 in 24h is normal rate).
 
 ### Web API – read side
@@ -126,9 +139,9 @@ The following items are implemented for the demo. They deliver a working slice o
 5. Error responses: always JSON `{ "code": 500, "error": "message" }` with appropriate HTTP status.
 6. Service listens on `HTTP_PORT` (default **8080**) and exposes only this single path.
 
-## 4 Data Model & Schema
+## 5 Data Model & Schema
 
-### 4.1 Entity (Go)
+### 5.1 Entity (Go)
 ```go
 // Delegation represents a single delegation operation returned by Tzkt
 // NOTE: field names match the JSON returned by our Web API, not Tzkt.
@@ -146,8 +159,9 @@ Field mapping (Tzkt → internal):
 * `sender.address` → `Delegator`
 * `level` → `Level`
 
-### 4.2 Database Schema (Demo)
+### 5.2 Database Schema
 ```sql
+-- Delegations table with UNIQUE constraint for duplicate prevention
 CREATE TABLE delegations (
   id BIGINT PRIMARY KEY,           -- Tzkt operation ID (unique, strictly increasing)
   timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -158,37 +172,39 @@ CREATE TABLE delegations (
 );
 
 -- Query optimization indexes
-CREATE INDEX idx_delegations_year ON delegations ((date_part('year', timestamp)));
 CREATE INDEX idx_delegations_timestamp ON delegations (timestamp);
 
--- Scraper checkpoint
+-- Scraper checkpoint (singleton table)
 CREATE TABLE scraper_checkpoint (
-  last_id BIGINT PRIMARY KEY
+  single_row BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (single_row = TRUE),
+  last_id BIGINT NOT NULL
 );
 ```
 ---
 
-## 5 Testing Strategy
-* **Acceptance test** – starts the Web API (with test data) and verifies the HTTP contract; executed via `make test-acceptance`.
-* **Unit tests** – cover both services: scraper polling/retry logic, DAO functions, and Web API handlers/validators.
-* **Execution** – `make test` runs all modules’ tests  with race detector, verbose output, and parallel tests.
+## 6 Testing Strategy
+* **Acceptance tests** – test scraper service against real Tzkt API and PostgreSQL; executed via `make test`.
+* **Unit tests** – cover scraper service: polling/retry logic, store operations, and domain conversions.
+* **Execution** – all test run with race detector, verbose output, and parallel execution.
 * **Coverage** – aim ≥80 % on non-generated code; reported in test output.
 * **TDD discipline** – RED → GREEN → REFACTOR cycle; acceptance first, then unit tests.
 
-Quality tools (`make fmt`, `make lint`, `make test`) run across the entire workspace, ensuring both services meet the same standards.
+Quality tools (`make fmt`, `make lint`, `make test`, `make coverage`) run across the entire workspace, ensuring consistent standards across all packages.
 
 > Coding conventions: idiomatic Go, gofumpt formatting, gci-ordered imports, explicit error wrapping.
 
 ---
 
-## 6 Production Evolution
+## 7 Production Evolution
 
-### 6.1 Current Production Status
+### 7.1 Current Production Status
 * **Data collection**: Scraper successfully fetches and processes real Tezos delegation data from Tzkt API.
 * **API integration**: Handles both small uncompressed (≤5 records) and large `gzip` compressed responses.
-* **Persistence limitation**: Current implementation uses mock store - requires real database integration for production persistence.
+* **Architecture maturity**: Clean separation between public API contracts and implementation, with reusable utilities in `pkg/` packages.
+* **Event-driven observability**: Complete lifecycle visibility through 7 event types, including enhanced shutdown reason tracking.
+* **Single-threaded processing**: Current implementation processes delegations sequentially. While worker pools could parallelize fetching for production workloads, the current state processes complete historical data (760k+ delegations) in seconds, making additional complexity unjustified for demo purposes.
 
-### 6.2 Data-Processing Pipeline
+### 7.2 Data-Processing Pipeline
 ```
 Scraper → Raw DB → Normalizer → Normalized DB → Web API
                          ↓
@@ -198,34 +214,38 @@ Scraper → Raw DB → Normalizer → Normalized DB → Web API
 * **Normalizer** (new component) transforms raw rows to a query-optimised schema, enriching and back-filling missing fields.  
 * Web API switches to the Normalized DB—isolating read performance from write spikes.
 
-### 6.2 Historical Backfill
-* Multi-worker framework processing time-based ranges in parallel.  
-* Checkpoints stored per worker to resume exactly where stopped.
+### 7.3 Historical Backfill
+* **Worker pool architecture**: Multi-worker framework processing time-based ranges in parallel for large-scale production environments.  
+* **Checkpoints per worker**: Stored per worker to resume exactly where stopped.
+* **Current efficiency baseline**: Single-threaded approach already processes 760k+ delegations in seconds, providing performance reference for complexity trade-offs.
 
-### 6.3 Performance & Scalability
+### 7.4 Performance & Scalability
 * **Indexes** on `timestamp`, `delegator`, `level`; partition tables by year.  
 * **Connection pooling** via PgBouncer or built-in pool tuning.  
+* **Worker pools**: Parallel processing becomes beneficial for sustained high-throughput scenarios or when API latency increases significantly beyond current ~0.06 seconds for full dataset.
 * **Horizontal scale**: multiple scraper instances with modulo-based shard on `id`.
 
-### 6.4 Resilience & Reliability
+### 7.5 Resilience & Reliability
+* **Rate limiting**: Token bucket limiter or fixed delays to respect API limits (10 req/sec for Tzkt).
 * **Exponential back-off + circuit breaker** around Tzkt requests.  
+* **HTTP 429 handling**: Respect `Retry-After` headers and implement adaptive throttling.
 * **Health probes** (`/health/live`, `/health/ready`) for orchestrators.  
 * **Graceful shutdown** drains in-flight HTTP requests and database txns.
 
-### 6.5 Observability
+### 7.6 Observability
 * **Prometheus metrics** (`/metrics`) and **OpenTelemetry traces**.  
 * Structured JSON logs with correlation IDs.
 
-### 6.6 Security
+### 7.7 Security
 * HTTPS termination, IP rate limiting, optional API keys.  
 * Parameter sanitisation and prepared statements to prevent SQL injection.
 
-### 6.7 Operations & CI/CD
+### 7.8 Operations & CI/CD
 * Docker images published per service; Helm charts for K8s.  
 * GitHub Actions pipeline: fmt → lint → test → build → scan → deploy.  
 * Zero-downtime migrations
 
-### 6.8 API Extensions
+### 7.9 API Extensions
 * OpenAPI spec generation for clients and backends.
 
 ---

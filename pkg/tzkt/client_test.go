@@ -1,7 +1,6 @@
 package tzkt_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -23,8 +22,8 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		expectedDelegations := []tzkt.Delegation{
-			createTestDelegation(1098907648, 109, "2018-06-30T19:30:27Z", "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", 25079312620),
-			createTestDelegation(1649410048, 167, "2018-06-30T20:29:42Z", "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft", 10199999690),
+			createTestDelegation(1098907648, int64(109), "2018-06-30T19:30:27Z", "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", 25079312620),
+			createTestDelegation(1649410048, int64(167), "2018-06-30T20:29:42Z", "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft", 10199999690),
 		}
 
 		server := httptest.NewServer(successHandler(t, expectedDelegations))
@@ -33,7 +32,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 2,
 		})
 
@@ -49,7 +48,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := tzkt.NewClient(&http.Client{}, "http://a b.com/") // Invalid URL with space
 
 		// Act
-		delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -64,7 +63,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := tzkt.NewClient(&http.Client{}, "http://invalid-nonexistent-domain.local")
 
 		// Act
-		delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -82,7 +81,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -100,7 +99,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -119,7 +118,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 25,
 		})
 
@@ -138,7 +137,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 0,
 		})
 
@@ -157,7 +156,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit:  10,
 			Offset: 0,
 		})
@@ -178,7 +177,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit:  10,
 			Offset: 50,
 		})
@@ -199,7 +198,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -218,7 +217,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -238,7 +237,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		idFilter := int64(12345)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit:         10,
 			IDGreaterThan: &idFilter,
 		})
@@ -258,7 +257,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		client := newClientWithServer(server)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit: 10,
 		})
 
@@ -278,7 +277,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		timestampFilter := time.Date(2024, 12, 1, 10, 0, 0, 0, time.UTC)
 
 		// Act
-		_, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
 			Limit:       10,
 			TimestampGE: &timestampFilter,
 		})
@@ -288,11 +287,12 @@ func TestTzktClientGetDelegations(t *testing.T) {
 	})
 }
 
-func createTestDelegation(id int64, level int, timestamp, address string, amount int64) tzkt.Delegation {
+func createTestDelegation(id int64, level int64, timestamp, address string, amount int64) tzkt.Delegation {
+	parsedTime, _ := time.Parse(time.RFC3339, timestamp)
 	return tzkt.Delegation{
 		ID:        id,
 		Level:     level,
-		Timestamp: timestamp,
+		Timestamp: parsedTime,
 		Sender: struct {
 			Address string `json:"address"`
 		}{

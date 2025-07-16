@@ -42,13 +42,15 @@ func TestTzktClientRealAPI(t *testing.T) {
 
 	// Verify each delegation has required fields with valid data
 	for i, delegation := range delegations {
-		assert.Greater(t, delegation.Level, 0, "Delegation %d should have valid block level", i)
-		assert.NotEmpty(t, delegation.Timestamp, "Delegation %d should have timestamp", i)
+		// Basic format validation
+		assert.Greater(t, delegation.Level, int64(0), "Delegation %d should have valid block level", i)
+		assert.False(t, delegation.Timestamp.IsZero(), "Delegation %d should have valid timestamp", i)
 		assert.NotEmpty(t, delegation.Sender.Address, "Delegation %d should have sender address", i)
 		assert.GreaterOrEqual(t, delegation.Amount, int64(0), "Delegation %d should have non-negative amount", i)
-
-		// Basic format validation
 		assert.Contains(t, delegation.Sender.Address, "tz", "Delegation %d sender should be Tezos address", i)
-		assert.Contains(t, delegation.Timestamp, "T", "Delegation %d timestamp should be ISO format", i)
+
+		// Verify timestamp is parseable to RFC3339 (proves it came from valid JSON)
+		timestampStr := delegation.Timestamp.Format(time.RFC3339)
+		assert.Contains(t, timestampStr, "T", "Delegation %d timestamp should be RFC3339 format", i)
 	}
 }

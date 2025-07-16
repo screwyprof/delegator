@@ -46,17 +46,17 @@ func NewClient(httpClient *http.Client, baseURL string) *Client {
 
 // DelegationsRequest represents parameters for getting delegations with filtering
 type DelegationsRequest struct {
-	Limit         uint
-	Offset        uint       // offset pagination
+	Limit         uint64
+	Offset        uint64     // offset pagination
 	IDGreaterThan *int64     // id.gt filter
 	TimestampGE   *time.Time // timestamp.ge filter
 }
 
 // Delegation represents a Tezos delegation from Tzkt API
 type Delegation struct {
-	ID        int64  `json:"id"`
-	Level     int    `json:"level"`
-	Timestamp string `json:"timestamp"`
+	ID        int64     `json:"id"`
+	Level     int64     `json:"level"`
+	Timestamp time.Time `json:"timestamp"`
 	Sender    struct {
 		Address string `json:"address"`
 	} `json:"sender"`
@@ -94,7 +94,7 @@ func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]
 	return delegations, nil
 }
 
-func effectiveLimit(limit uint) uint {
+func effectiveLimit(limit uint64) uint64 {
 	if limit == 0 {
 		return defaultLimit
 	}

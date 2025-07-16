@@ -10,6 +10,8 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+*.cov
+/coverage/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -21,10 +23,6 @@ go.work
 /bin/
 /dist/
 
-# Coverage reports
-coverage.out
-coverage.html
-coverage.tmp
 
 # IDE and editor files
 .vscode/

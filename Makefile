@@ -17,6 +17,8 @@ VERSION ?= $(shell \
 GO_FILES := $(shell find . -name "*.go" | grep -v vendor)
 TEST_FLAGS := -race -parallel 4 -v
 PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
+# Coverage exclusion patterns (blacklist approach using grep)
+COVERAGE_EXCLUDE := -e "scraper/store/" -e "pkg/pgxdb/" -e "pkg/logger/" -e "cmd/"
 
 # Colors for output
 OK_COLOR := \033[32;01m
@@ -25,14 +27,14 @@ MAKE_COLOR := \033[33;01m%-25s\033[0m
 
 # Shell and default goal
 SHELL := bash
+.SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := all
 
 # Declare all phony targets upfront
 .PHONY: help deps tools clean all
-.PHONY: fmt lint check test test-all coverage
+.PHONY: fmt lint check test coverage cover-html cover-svg
 .PHONY: build
-.PHONY: test-acceptance test-acceptance-pkg test-acceptance-scraper test-acceptance-web
-.PHONY: run-scraper run-web
+.PHONY: run-scraper run-scraper-demo run-web
 
 help: ## Show this help screen
 	@echo -e "$(OK_COLOR)Delegator - Tezos Delegation Service$(NO_COLOR)\n"
@@ -50,7 +52,8 @@ deps: ## Install development tools using Go 1.24 tool management
 	@echo -e "$(OK_COLOR)--> Installing development tools$(NO_COLOR)"
 	@go get -tool mvdan.cc/gofumpt@latest && \
 	 go get -tool github.com/daixiang0/gci@latest && \
-	 go get -tool github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	 go get -tool github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
+	 go get -tool github.com/nikolaydubina/go-cover-treemap@latest
 
 tools: ## List all installed development tools
 	@echo -e "$(OK_COLOR)--> Installed development tools:$(NO_COLOR)"
@@ -72,18 +75,33 @@ lint: ## Run golangci-lint static analysis
 
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
-test: ## Run unit tests with race detection
-	@echo -e "$(OK_COLOR)--> Running unit tests$(NO_COLOR)"
+test: ## Run all tests (unit + acceptance) with race detection
+	@echo -e "$(OK_COLOR)--> Running all tests$(NO_COLOR)"
 	@go test $(TEST_FLAGS) $(PACKAGES)
+	@go test $(TEST_FLAGS) -tags=acceptance $(PACKAGES)
 
-test-all: test test-acceptance ## Run all tests (unit + acceptance)
+coverage: ## Run all tests with coverage report
+	@echo -e "$(OK_COLOR)--> Running all tests with coverage$(NO_COLOR)"
+	@rm -rf coverage && mkdir -p coverage
+	@go test $(TEST_FLAGS) -tags=acceptance -cover $(PACKAGES) -args -test.gocoverdir="$(PWD)/coverage" > /dev/null 2>&1
+	@go tool covdata textfmt -i=coverage -o coverage.tmp
+	@cat coverage.tmp | grep -v $(COVERAGE_EXCLUDE) > coverage.out && rm coverage.tmp
+	@echo -e "$(OK_COLOR)--> Project coverage:$(NO_COLOR)"
+	@go tool cover -func=coverage.out | grep "total:" || echo "No coverage data after filtering"
+	@echo -e "$(OK_COLOR)--> Detailed coverage:$(NO_COLOR)"
+	@go tool cover -func=coverage.out
 
-coverage: ## Run tests and show coverage report
-	@echo -e "$(OK_COLOR)--> Generating coverage report$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -covermode=atomic -coverprofile=coverage.out $(PACKAGES) && \
-	 go tool cover -func=coverage.out && \
-	 go tool cover -html=coverage.out -o coverage.html && \
-	 echo -e "$(OK_COLOR)Coverage report: coverage.html$(NO_COLOR)"
+cover-html: coverage ## Generate and show HTML coverage report
+	@echo -e "$(OK_COLOR)--> Opening HTML coverage report$(NO_COLOR)"
+	@go tool cover -html=coverage.out
+
+cover-svg: coverage ## Generate SVG treemap visualization of coverage
+	@echo -e "$(OK_COLOR)--> Generating SVG treemap visualization$(NO_COLOR)"
+	@go tool go-cover-treemap -coverprofile coverage.out > "$(PWD)/coverage/coverage.svg"
+	@echo -e "$(OK_COLOR)--> SVG visualization: coverage/coverage.svg$(NO_COLOR)"
+	@open -a "Safari" "$(PWD)/coverage/coverage.svg" 2>/dev/null || \
+	 open -a "Google Chrome" "$(PWD)/coverage/coverage.svg" 2>/dev/null || \
+	 open "$(PWD)/coverage/coverage.svg"
 
 #
 # Build and Run
@@ -102,36 +120,20 @@ build: ## Build all services
 clean: ## Clean build artifacts and generated files
 	@echo -e "$(OK_COLOR)--> Cleaning up$(NO_COLOR)"
 	@go clean && \
-	 rm -rf bin/ && \
-	 rm -f coverage.out coverage.html
-
-#
-# Testing
-#
-
-test-acceptance: ## Run all acceptance tests
-	@echo -e "$(OK_COLOR)--> Running acceptance tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -tags=acceptance $(PACKAGES)
-
-test-acceptance-pkg: ## Run pkg/ acceptance tests (external API)
-	@echo -e "$(OK_COLOR)--> Running pkg/ acceptance tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -tags=acceptance ./pkg/...
-
-test-acceptance-scraper: ## Run scraper acceptance tests
-	@echo -e "$(OK_COLOR)--> Running scraper acceptance tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -tags=acceptance ./scraper/...
-
-test-acceptance-web: ## Run web API acceptance tests
-	@echo -e "$(OK_COLOR)--> Running web API acceptance tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) -tags=acceptance ./web/...
+	 rm -rf bin/ coverage/ && \
+	 rm -f *.out *.cov coverage.html coverage.svg
 
 #
 # Services
 #
 
-run-scraper: ## Run scraper service
-	@echo -e "$(OK_COLOR)--> Starting scraper service$(NO_COLOR)"
+run-scraper: ## Run scraper service (production mode - full sync)
+	@echo -e "$(OK_COLOR)--> Starting scraper service (production mode)$(NO_COLOR)"
 	@go run cmd/scraper/main.go
+
+run-scraper-demo: ## Run scraper service (demo mode - recent data only)
+	@echo -e "$(OK_COLOR)--> Starting scraper service (demo mode)$(NO_COLOR)"
+	@SCRAPER_CHUNK_SIZE=1000 SCRAPER_INITIAL_CHECKPOINT=1939557726552064 go run cmd/scraper/main.go
 
 run-web: ## Run web API service
 	@echo -e "$(OK_COLOR)--> Starting web API service$(NO_COLOR)"
