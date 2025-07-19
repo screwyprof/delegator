@@ -17,6 +17,11 @@ import (
 	"github.com/screwyprof/delegator/web/store/pgxstore"
 )
 
+var (
+	version = "dev"
+	date    = "unknown"
+)
+
 func main() {
 	// Load configuration
 	cfg := config.New()
@@ -32,7 +37,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	log.InfoContext(ctx, "Delegator Web API Service starting")
+	log.InfoContext(ctx, "Delegator Web API Service starting",
+		slog.String("version", version),
+		slog.String("date", date),
+	)
 
 	// Initialize database connection
 	db, err := pgxdb.NewConnection(ctx, cfg.DatabaseURL)

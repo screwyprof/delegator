@@ -34,7 +34,7 @@ SHELL := bash
 # Declare all phony targets upfront
 .PHONY: help deps tools clean all
 .PHONY: fmt lint check test coverage coverage-html coverage-svg
-.PHONY: build build-migrator build-scraper
+.PHONY: build build-migrator build-scraper build-web show-version
 .PHONY: run run-migrator run-scraper run-scraper-demo run-web
 .PHONY: run-demo run-migrator-demo run-scraper-demo
 
@@ -121,12 +121,16 @@ build-scraper: ## Build scraper binary with version metadata
 	@echo -e "$(OK_COLOR)--> Building scraper service (version: $(VERSION))$(NO_COLOR)"
 	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/scraper ./cmd/scraper
 
+# Build web with version metadata
+build-web: ## Build web API binary with version metadata
+	@echo -e "$(OK_COLOR)--> Building web API service (version: $(VERSION))$(NO_COLOR)"
+	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/web ./cmd/web
+
 # Build all services (migrator & scraper)
 build: ## Build all services
 	@$(MAKE) build-migrator
 	@$(MAKE) build-scraper
-	@echo -e "$(OK_COLOR)--> Building web API service$(NO_COLOR)"
-	@go build -o bin/web cmd/web/main.go
+	@$(MAKE) build-web
 
 #
 # Maintenance

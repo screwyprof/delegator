@@ -82,4 +82,24 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VERSION: ${VERSION:-dev}
+        DATE: ${DATE:-unknown}
+    environment:
+      WEB_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
+      WEB_HTTP_HOST: 0.0.0.0
+      WEB_HTTP_PORT: "8080"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_HUMAN_FRIENDLY: ${LOG_HUMAN_FRIENDLY:-false}
+    ports:
+      - "8080:8080"
+    depends_on:
+      scraper:
+        condition: service_started
+    restart: unless-stopped
+
  

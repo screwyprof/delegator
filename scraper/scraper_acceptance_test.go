@@ -16,6 +16,7 @@ import (
 	"github.com/screwyprof/delegator/pkg/pgxdb"
 	"github.com/screwyprof/delegator/pkg/tzkt"
 	"github.com/screwyprof/delegator/scraper"
+	"github.com/screwyprof/delegator/scraper/config"
 	"github.com/screwyprof/delegator/scraper/store/pgxstore"
 	"github.com/screwyprof/delegator/scraper/testcfg"
 )
@@ -36,6 +37,13 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		// Arrange
 		// Load test configuration (ALL test-optimized parameters)
 		testCfg := testcfg.New()
+
+		// prod config
+		prodCfg := config.New()
+		prodCfg.ChunkSize = testCfg.ChunkSize
+		prodCfg.PollInterval = testCfg.PollInterval
+		prodCfg.HttpClientTimeout = testCfg.HttpClientTimeout
+		prodCfg.TzktAPIURL = testCfg.TzktAPIURL
 
 		// Create test database with schema + checkpoint (migrator concern)
 		testDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", uint64(testCfg.Checkpoint))
@@ -207,4 +215,14 @@ func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store,
 		scraper.WithChunkSize(testCfg.ChunkSize),
 		scraper.WithPollInterval(testCfg.PollInterval),
 	)
+}
+
+func createProdCfg(testCfg testcfg.Config) config.Config {
+	prodCfg := config.New()
+	prodCfg.ChunkSize = testCfg.ChunkSize
+	prodCfg.PollInterval = testCfg.PollInterval
+	prodCfg.HttpClientTimeout = testCfg.HttpClientTimeout
+	prodCfg.TzktAPIURL = testCfg.TzktAPIURL
+
+	return prodCfg
 }
