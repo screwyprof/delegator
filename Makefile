@@ -6,7 +6,16 @@ LOCAL_PACKAGES := "github.com/screwyprof/"
 # Architecture detection removed - letting Docker handle it natively
 
 # Version handling - CI can override with: make build VERSION=v1.2.3
-VERSION ?= $(strip $(shell command git describe --tags --always --dirty --long 2>/dev/null || echo dev))
+# dev build: <branch>-<sha> (e.g. main-fe6dbaa)
+# release  : v1.2.3        (when an exact tag exists on HEAD)
+VERSION ?= $(shell \
+	if command git describe --tags --exact-match HEAD >/dev/null 2>&1; then \
+		command git describe --tags --exact-match HEAD; \
+	else \
+		echo "$$(command git rev-parse --abbrev-ref HEAD)-$$(command git rev-parse --short HEAD)"; \
+	fi)
+
+# Build timestamp in ISO 8601 format
 DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Build configuration
