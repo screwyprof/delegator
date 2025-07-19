@@ -68,16 +68,13 @@ func (q *DelegationsQueryBuilder) Build() (string, []any) {
 
 // Helper methods for building SQL
 
-// addWhereCondition adds a WHERE condition, handling AND logic automatically
+// addWhereCondition adds a WHERE condition (assumes only one condition)
+// NOTE: If multiple WHERE conditions are needed in the future, implement AND logic:
+//
+//	if strings.Contains(q.sql, " WHERE ") { q.sql += " AND " } else { q.sql += " WHERE " }
 func (q *DelegationsQueryBuilder) addWhereCondition(sqlClause string, value any) {
 	placeholder := q.nextPlaceholder()
-
-	if q.hasWhereClause() {
-		q.sql += " AND " + fmt.Sprintf(sqlClause, placeholder)
-	} else {
-		q.sql += " WHERE " + fmt.Sprintf(sqlClause, placeholder)
-	}
-
+	q.sql += " WHERE " + fmt.Sprintf(sqlClause, placeholder)
 	q.args = append(q.args, value)
 }
 
@@ -86,12 +83,6 @@ func (q *DelegationsQueryBuilder) addParameter(sqlClause string, value any) {
 	placeholder := q.nextPlaceholder()
 	q.sql += " " + fmt.Sprintf(sqlClause, placeholder)
 	q.args = append(q.args, value)
-}
-
-// hasWhereClause checks if the query already has a WHERE clause
-func (q *DelegationsQueryBuilder) hasWhereClause() bool {
-	// Simple check - could be more sophisticated if needed
-	return len(q.args) > 0
 }
 
 // nextPlaceholder returns the next PostgreSQL placeholder ($1, $2, etc.)

@@ -10,7 +10,6 @@ import (
 // Sentinel errors for delegation criteria construction
 var (
 	ErrInvalidYear    = errors.New("invalid year")
-	ErrInvalidPage    = errors.New("invalid page")
 	ErrInvalidPerPage = errors.New("invalid per_page")
 )
 
@@ -52,10 +51,7 @@ func NewDelegationsCriteria(year, page, perPage uint64) (DelegationsCriteria, er
 		return DelegationsCriteria{}, fmt.Errorf("%w: %w", ErrInvalidYear, err)
 	}
 
-	p, err := ParsePageFromUint64(page)
-	if err != nil {
-		return DelegationsCriteria{}, fmt.Errorf("%w: %w", ErrInvalidPage, err)
-	}
+	p := ParsePageFromUint64(page) // No error - any uint64 is valid for page
 
 	pp, err := ParsePerPageFromUint64(perPage)
 	if err != nil {

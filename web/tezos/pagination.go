@@ -24,14 +24,14 @@ var (
 	ErrPerPageTooLarge    = errors.New("per_page exceeds maximum limit")
 )
 
-// ParsePageFromUint64 creates a Page from uint64 with domain validation
-func ParsePageFromUint64(page uint64) (Page, error) {
+// ParsePageFromUint64 creates a Page from uint64 with default handling
+func ParsePageFromUint64(page uint64) Page {
 	// Zero means use default page
 	if page == 0 {
-		return Page(DefaultPage), nil
+		return Page(DefaultPage)
 	}
 
-	return Page(page), nil
+	return Page(page)
 }
 
 // ParsePerPageFromUint64 creates a PerPage from uint64 with domain validation
