@@ -13,11 +13,14 @@ type Config struct {
 	LogHumanFriendly bool   `env:"LOG_HUMAN_FRIENDLY" envDefault:"false"`
 }
 
+// parseConfig wraps env.Parse to return (Config, error) for use with env.Must
+func parseConfig() (Config, error) {
+	var cfg Config
+	err := env.Parse(&cfg)
+	return cfg, err
+}
+
 // New loads all configuration from environment variables
 func New() Config {
-	var cfg Config
-	if err := env.Parse(&cfg); err != nil {
-		panic(err)
-	}
-	return cfg
+	return env.Must(parseConfig())
 }

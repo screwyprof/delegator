@@ -2,7 +2,6 @@ package migratortest
 
 import (
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib" // pgx driver for pgtestdb
@@ -10,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/delegator/migrator"
+	"github.com/screwyprof/delegator/scraper/testcfg"
 )
 
 // CreateScraperTestDatabase creates a test database with migrations applied + scraper checkpoint initialized.
-// This mirrors the production pattern: schema first, then checkpoint initialization.
 // Returns the connection pool ready for use.
 func CreateScraperTestDatabase(t *testing.T, migrationsDir string, initialCheckpoint uint64) *pgxpool.Pool {
 	t.Helper()
@@ -31,10 +30,12 @@ func CreateScraperTestDatabase(t *testing.T, migrationsDir string, initialCheckp
 
 // CreateSeededTestDatabase creates a test database with migrations and demo data seeded.
 // Returns the connection pool ready for use.
-func CreateSeededTestDatabase(t *testing.T, migrationsDir string, demoCheckpoint int64, chunkSize uint64, seedTimeout time.Duration) *pgxpool.Pool {
+func CreateSeededTestDatabase(t *testing.T, migrationsDir string) *pgxpool.Pool {
 	t.Helper()
 
-	migratorInstance := migrator.NewSeededMigrator(migrationsDir, demoCheckpoint, chunkSize, seedTimeout)
+	scraperCfg := testcfg.New()
+
+	migratorInstance := migrator.NewSeededMigrator(migrationsDir, scraperCfg.Checkpoint, scraperCfg.ChunkSize, scraperCfg.SeedTimeout)
 	return createTestDatabaseWithMigrator(t, migratorInstance)
 }
 

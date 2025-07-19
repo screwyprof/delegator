@@ -14,11 +14,14 @@ type Config struct {
 	BaseURL     string        `env:"TZKT_TEST_BASE_URL" envDefault:"https://api.tzkt.io"`
 }
 
+// parseConfig wraps env.Parse to return (Config, error) for use with env.Must
+func parseConfig() (Config, error) {
+	var cfg Config
+	err := env.Parse(&cfg)
+	return cfg, err
+}
+
 // New loads test configuration from environment variables
 func New() Config {
-	var cfg Config
-	if err := env.Parse(&cfg); err != nil {
-		panic(err)
-	}
-	return cfg
+	return env.Must(parseConfig())
 }

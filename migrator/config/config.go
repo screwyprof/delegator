@@ -25,11 +25,14 @@ type Config struct {
 	OperationTimeout time.Duration `env:"MIGRATOR_OPERATION_TIMEOUT" envDefault:"30s"`
 }
 
+// parseConfig wraps env.Parse to return (Config, error) for use with env.Must
+func parseConfig() (Config, error) {
+	var cfg Config
+	err := env.Parse(&cfg)
+	return cfg, err
+}
+
 // New loads all configuration from environment variables
 func New() Config {
-	var cfg Config
-	if err := env.Parse(&cfg); err != nil {
-		panic(err)
-	}
-	return cfg
+	return env.Must(parseConfig())
 }

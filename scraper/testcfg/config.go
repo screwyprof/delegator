@@ -20,14 +20,18 @@ type Config struct {
 	ShutdownTimeout time.Duration `env:"SCRAPER_TEST_SHUTDOWN_TIMEOUT" envDefault:"2s"`
 
 	// Test database setup (for migrator/migratortest)
-	Checkpoint int64 `env:"SCRAPER_TEST_CHECKPOINT" envDefault:"1939557726552064"`
+	Checkpoint  int64         `env:"SCRAPER_TEST_CHECKPOINT" envDefault:"1939557726552064"`
+	SeedTimeout time.Duration `env:"SCRAPER_TEST_SEED_TIMEOUT" envDefault:"5s"`
+}
+
+// parseConfig wraps env.Parse to return (Config, error) for use with env.Must
+func parseConfig() (Config, error) {
+	var cfg Config
+	err := env.Parse(&cfg)
+	return cfg, err
 }
 
 // New loads test configuration from environment variables
 func New() Config {
-	var cfg Config
-	if err := env.Parse(&cfg); err != nil {
-		panic(err)
-	}
-	return cfg
+	return env.Must(parseConfig())
 }

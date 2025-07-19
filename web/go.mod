@@ -8,6 +8,7 @@ require (
 	github.com/screwyprof/delegator/migrator v0.0.0-00010101000000-000000000000
 	github.com/screwyprof/delegator/pkg v0.0.0
 	github.com/stretchr/testify v1.10.0
+	github.com/zolstein/pgx-collect v0.0.0-20240326220938-c46e0ea05ad2
 )
 
 require (

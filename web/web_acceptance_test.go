@@ -4,8 +4,10 @@ package web_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/screwyprof/delegator/web/handler"
 	"github.com/screwyprof/delegator/web/store/pgxstore"
 	"github.com/screwyprof/delegator/web/testcfg"
+	"github.com/screwyprof/delegator/web/tezos"
 )
 
 // TestWebAPIAcceptanceBehavior tests end-to-end web API functionality
@@ -28,8 +31,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 
 	// Create ONE shared read-only test database for all subtests
 	// Since we never modify data, this can be safely shared
-	testCfg := testcfg.New()
-	sharedTestDB := migratortest.CreateSeededTestDatabase(t, "../migrator/migrations", testCfg.SeedCheckpoint, testCfg.SeedChunkSize, testCfg.SeedTimeout)
+	sharedTestDB := migratortest.CreateSeededTestDatabase(t, "../migrator/migrations")
 	t.Cleanup(func() {
 		sharedTestDB.Close()
 	})
@@ -40,50 +42,20 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 	t.Run("it returns delegations with default pagination and ordering", func(t *testing.T) {
 		t.Parallel()
 
-		// Each test creates its own connection pool to the shared read-only database
-		server, cleanup := createTestServerWithIsolatedConnection(t, dbConnString)
-		t.Cleanup(cleanup)
-		client := &http.Client{}
-
 		// Arrange
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations", nil)
-		require.NoError(t, err, "Should create HTTP request")
+		server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
+		defer cleanup()
+		client := createTestAPIClient(t)
 
 		// Act
-		resp, err := client.Do(req)
+		response := makeGetDelegationsRequest(t, client, server.URL)
+		delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 		// Assert
-		require.NoError(t, err, "HTTP request should succeed")
-		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should return HTTP 200 OK")
-
-		defer resp.Body.Close()
-
-		var response api.DelegationsResponse
-		err = json.NewDecoder(resp.Body).Decode(&response)
-		require.NoError(t, err, "Response should be valid JSON")
-
-		// Note: We expect exactly 50 because the seeded database should have more than 50 delegations
-		assert.Equal(t, 50, len(response.Data), "Should return exactly 50 delegations (default pagination limit)")
-
-		// Validate ordering: most recent first (descending timestamps)
-		if len(response.Data) > 1 {
-			for i := 0; i < len(response.Data)-1; i++ {
-				current := response.Data[i].Timestamp
-				next := response.Data[i+1].Timestamp
-				assert.GreaterOrEqual(t, current, next,
-					"Delegations should be ordered most recent first (index %d: %s should be >= %s)",
-					i, current, next)
-			}
-			t.Logf("✅ Ordering verified: most recent first")
-		}
-
-		// Validate response format matches TASK.md specification
-		for i, delegation := range response.Data {
-			assert.NotEmpty(t, delegation.Timestamp, "Delegation %d should have timestamp", i)
-			assert.NotEmpty(t, delegation.Amount, "Delegation %d should have amount", i)
-			assert.NotEmpty(t, delegation.Delegator, "Delegation %d should have delegator", i)
-			assert.NotEmpty(t, delegation.Level, "Delegation %d should have level", i)
-		}
+		assertSuccessfulResponse(t, response)
+		assertReturnsDefaultPagination(t, delegationsResp)
+		assertDelegationsOrderedMostRecentFirst(t, delegationsResp.Data)
+		assertAllDelegationsHaveValidFormat(t, delegationsResp.Data)
 
 		t.Logf("✅ Default pagination test completed successfully")
 	})
@@ -91,40 +63,21 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 	t.Run("it filters delegations by year parameter", func(t *testing.T) {
 		t.Parallel()
 
-		// Each test creates its own connection pool to the shared read-only database
-		server, cleanup := createTestServerWithIsolatedConnection(t, dbConnString)
-		t.Cleanup(cleanup)
-		client := &http.Client{}
+		// Arrange
+		const year = 2025
 
-		// Arrange - Use 2025 since our seeded data is recent
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations?year=2025", nil)
-		require.NoError(t, err, "Should create HTTP request")
+		server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
+		defer cleanup()
+		client := createTestAPIClient(t)
 
 		// Act
-		resp, err := client.Do(req)
+		response := makeGetDelegationsWithYearRequest(t, client, server.URL, year)
+		delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 		// Assert
-		require.NoError(t, err, "HTTP request should succeed")
-		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should return HTTP 200 OK")
-
-		defer resp.Body.Close()
-
-		var response api.DelegationsResponse
-		err = json.NewDecoder(resp.Body).Decode(&response)
-		require.NoError(t, err, "Response should be valid JSON")
-
-		// Validate that we got some results (seeded data should have 2025 delegations)
-		assert.Greater(t, len(response.Data), 0, "Should return some delegations for year 2025")
-		t.Logf("📋 Year filtering response: %d delegations for 2025", len(response.Data))
-
-		// Validate that ALL returned delegations are from 2025
-		for i, delegation := range response.Data {
-			timestamp, err := time.Parse(time.RFC3339, delegation.Timestamp)
-			require.NoError(t, err, "Should parse delegation timestamp")
-
-			year := timestamp.Year()
-			assert.Equal(t, 2025, year, "Delegation %d should be from year 2025, got %d", i, year)
-		}
+		assertSuccessfulResponse(t, response)
+		assertReturnsNonEmptyResults(t, delegationsResp)
+		assertAllDelegationsFromYear(t, delegationsResp.Data, year)
 
 		t.Logf("✅ Year filtering test completed successfully")
 	})
@@ -135,125 +88,331 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 		t.Run("it omits Link header when results fit on first page", func(t *testing.T) {
 			t.Parallel()
 
-			// Create clean database with only schema (no seeded data)
-			cleanTestDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", 0)
-			t.Cleanup(func() {
-				cleanTestDB.Close()
-			})
-
-			// Manually insert just 2 test delegations (fits in one page)
-			insertTestDelegations(t, cleanTestDB)
-
-			// Create server with clean database
-			server, cleanup := createTestServerWithIsolatedConnection(t, cleanTestDB.Config().ConnString())
-			t.Cleanup(cleanup)
-			client := &http.Client{}
-
-			// Arrange - request with default page size (50), only 2 records exist
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations", nil)
-			require.NoError(t, err, "Should create HTTP request")
+			// Arrange
+			server, cleanup := createTestServerWithMinimalData(t)
+			defer cleanup()
+			client := createTestAPIClient(t)
 
 			// Act
-			resp, err := client.Do(req)
+			response := makeGetDelegationsRequest(t, client, server.URL)
+			delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 			// Assert
-			require.NoError(t, err, "HTTP request should succeed")
-			defer resp.Body.Close()
-			require.Equal(t, http.StatusOK, resp.StatusCode, "Should return OK")
-
-			// Parse response to verify we got results that fit on one page
-			var response api.DelegationsResponse
-			err = json.NewDecoder(resp.Body).Decode(&response)
-			require.NoError(t, err, "Should parse JSON response")
-			assert.Equal(t, 2, len(response.Data), "Should return exactly 2 manually inserted delegations")
-
-			// When results fit on first page, Link header should be omitted
-			linkHeader := resp.Header.Get("Link")
-			assert.Empty(t, linkHeader, "Should omit Link header when all results fit on first page")
+			assertSuccessfulResponse(t, response)
+			assertExactDelegationCount(t, delegationsResp, 2)
+			assertPaginationLinksAbsent(t, response)
 		})
 
 		t.Run("it provides next link on first page when more pages exist", func(t *testing.T) {
 			t.Parallel()
 
 			// Arrange
-			server, cleanup := createTestServerWithIsolatedConnection(t, dbConnString)
-			t.Cleanup(cleanup)
-			client := &http.Client{}
-
-			// Request small page size to ensure multiple pages
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations?per_page=10", nil)
-			require.NoError(t, err, "Should create HTTP request")
+			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
+			defer cleanup()
+			client := createTestAPIClient(t)
 
 			// Act
-			resp, err := client.Do(req)
+			response := makeGetDelegationsWithPagination(t, client, server.URL, 1, 10)
 
 			// Assert
-			require.NoError(t, err, "HTTP request should succeed")
-			defer resp.Body.Close()
-			require.Equal(t, http.StatusOK, resp.StatusCode, "Should return OK")
-
-			linkHeader := resp.Header.Get("Link")
-			assert.NotEmpty(t, linkHeader, "Should provide Link header when more pages exist")
-			assert.Contains(t, linkHeader, `rel="next"`, "Should provide next link on first page")
-			assert.NotContains(t, linkHeader, `rel="prev"`, "Should not provide prev link on first page")
+			assertSuccessfulResponse(t, response)
+			assertPaginationLinksPresent(t, response)
+			assertContainsNextLink(t, response)
+			assertMissingPrevLink(t, response)
 		})
 
 		t.Run("it provides navigation links on middle pages", func(t *testing.T) {
 			t.Parallel()
 
 			// Arrange
-			server, cleanup := createTestServerWithIsolatedConnection(t, dbConnString)
-			t.Cleanup(cleanup)
-			client := &http.Client{}
-
-			// Request page 2 with small page size to ensure we're in the middle
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations?page=2&per_page=10", nil)
-			require.NoError(t, err, "Should create HTTP request")
+			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
+			defer cleanup()
+			client := createTestAPIClient(t)
 
 			// Act
-			resp, err := client.Do(req)
+			response := makeGetDelegationsWithPagination(t, client, server.URL, 2, 10)
 
 			// Assert
-			require.NoError(t, err, "HTTP request should succeed")
-			defer resp.Body.Close()
-			require.Equal(t, http.StatusOK, resp.StatusCode, "Should return OK")
-
-			linkHeader := resp.Header.Get("Link")
-			assert.NotEmpty(t, linkHeader, "Should provide Link header on middle pages")
-			assert.Contains(t, linkHeader, `rel="prev"`, "Should provide prev link when not on first page")
-
-			// Check that URLs are correctly formed
-			assert.Contains(t, linkHeader, "page=1", "Prev link should point to page 1")
-			assert.Contains(t, linkHeader, "per_page=10", "All links should preserve per_page parameter")
+			assertSuccessfulResponse(t, response)
+			assertPaginationLinksPresent(t, response)
+			assertContainsPrevLink(t, response)
+			assertCorrectPageNavigation(t, response, 1, 10)
 		})
 
 		t.Run("it preserves query parameters in pagination links", func(t *testing.T) {
 			t.Parallel()
 
 			// Arrange
-			server, cleanup := createTestServerWithIsolatedConnection(t, dbConnString)
-			t.Cleanup(cleanup)
-			client := &http.Client{}
+			const year = 2025
+			const perPage = 5
+			const page = 2
 
-			// Request page 2 with year filter and small page size
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations?page=2&per_page=5&year=2025", nil)
-			require.NoError(t, err, "Should create HTTP request")
+			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
+			defer cleanup()
+			client := createTestAPIClient(t)
 
 			// Act
-			resp, err := client.Do(req)
+			response := makeGetDelegationsWithYearAndPagination(t, client, server.URL, year, page, perPage)
 
 			// Assert
-			require.NoError(t, err, "HTTP request should succeed")
-			defer resp.Body.Close()
-			require.Equal(t, http.StatusOK, resp.StatusCode, "Should return OK")
-
-			linkHeader := resp.Header.Get("Link")
-			assert.NotEmpty(t, linkHeader, "Should provide Link header on middle pages with parameters")
-			// All navigation links should preserve the year filter
-			assert.Contains(t, linkHeader, "year=2025", "Should preserve year parameter in navigation links")
-			assert.Contains(t, linkHeader, "per_page=5", "Should preserve per_page parameter in navigation links")
+			assertSuccessfulResponse(t, response)
+			assertPaginationLinksPresent(t, response)
+			assertPreservesQueryParameters(t, response, map[string]string{
+				"year":     strconv.Itoa(year),
+				"per_page": strconv.Itoa(perPage),
+			})
 		})
 	})
+}
+
+// =============================================================================
+// Arrange Phase Helpers - Factory functions for test setup
+// =============================================================================
+
+// createTestAPIClient creates an HTTP client for API testing
+func createTestAPIClient(t *testing.T) *http.Client {
+	t.Helper()
+	return http.DefaultClient
+}
+
+// createTestServerUsingSeededDatabase creates a test server that connects to an already-seeded database
+func createTestServerUsingSeededDatabase(t *testing.T, dbConnString string) (*httptest.Server, func()) {
+	t.Helper()
+	return createTestServerWithIsolatedConnection(t, dbConnString)
+}
+
+// createTestServerWithMinimalData creates a test server with minimal test data
+func createTestServerWithMinimalData(t *testing.T) (*httptest.Server, func()) {
+	t.Helper()
+
+	// Create clean database with only schema (no seeded data)
+	cleanTestDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", 0)
+	t.Cleanup(func() {
+		cleanTestDB.Close()
+	})
+
+	// Manually insert just 2 test delegations (fits in one page)
+	insertTestDelegations(t, cleanTestDB)
+
+	// Create server with clean database
+	return createTestServerWithIsolatedConnection(t, cleanTestDB.Config().ConnString())
+}
+
+// =============================================================================
+// Action Helpers - HTTP request helpers that express intent
+// =============================================================================
+
+// makeGetDelegationsRequest performs a basic GET /xtz/delegations request
+func makeGetDelegationsRequest(t *testing.T, client *http.Client, baseURL string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/xtz/delegations", nil)
+	require.NoError(t, err, "Should create HTTP request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "HTTP request should succeed")
+
+	return resp
+}
+
+// makeGetDelegationsWithYearRequest performs GET /xtz/delegations with year filter
+func makeGetDelegationsWithYearRequest(t *testing.T, client *http.Client, baseURL string, year int) *http.Response {
+	t.Helper()
+
+	url := fmt.Sprintf("%s/xtz/delegations?year=%d", baseURL, year)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err, "Should create HTTP request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "HTTP request should succeed")
+
+	return resp
+}
+
+// makeGetDelegationsWithPagination performs GET /xtz/delegations with pagination
+func makeGetDelegationsWithPagination(t *testing.T, client *http.Client, baseURL string, page, perPage int) *http.Response {
+	t.Helper()
+
+	url := fmt.Sprintf("%s/xtz/delegations?page=%d&per_page=%d", baseURL, page, perPage)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err, "Should create HTTP request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "HTTP request should succeed")
+
+	return resp
+}
+
+// makeGetDelegationsWithYearAndPagination performs GET /xtz/delegations with year filter and pagination
+func makeGetDelegationsWithYearAndPagination(t *testing.T, client *http.Client, baseURL string, year, page, perPage int) *http.Response {
+	t.Helper()
+
+	url := fmt.Sprintf("%s/xtz/delegations?year=%d&page=%d&per_page=%d", baseURL, year, page, perPage)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err, "Should create HTTP request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "HTTP request should succeed")
+
+	return resp
+}
+
+// =============================================================================
+// Named Domain Assertions - Business rule assertions
+// =============================================================================
+
+// assertSuccessfulResponse verifies the HTTP response indicates success
+func assertSuccessfulResponse(t *testing.T, resp *http.Response) {
+	t.Helper()
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "Should return HTTP 200 OK")
+}
+
+// assertReturnsDefaultPagination verifies response uses default pagination (50 items)
+func assertReturnsDefaultPagination(t *testing.T, response api.DelegationsResponse) {
+	t.Helper()
+	assert.Equal(t, tezos.DefaultPerPage, len(response.Data), "Should return exactly %d delegations (default pagination limit)", tezos.DefaultPerPage)
+}
+
+// assertReturnsNonEmptyResults verifies response contains at least one delegation
+func assertReturnsNonEmptyResults(t *testing.T, response api.DelegationsResponse) {
+	t.Helper()
+	assert.Greater(t, len(response.Data), 0, "Should return some delegations")
+	t.Logf("📋 Response contains %d delegations", len(response.Data))
+}
+
+// assertExactDelegationCount verifies response contains exactly the expected number of delegations
+func assertExactDelegationCount(t *testing.T, response api.DelegationsResponse, expected int) {
+	t.Helper()
+	assert.Equal(t, expected, len(response.Data), "Should return exactly %d delegations", expected)
+}
+
+// assertDelegationsOrderedMostRecentFirst verifies delegations are ordered by timestamp descending
+func assertDelegationsOrderedMostRecentFirst(t *testing.T, delegations []api.Delegation) {
+	t.Helper()
+
+	if len(delegations) <= 1 {
+		return // Nothing to verify with 0 or 1 items
+	}
+
+	for i := 0; i < len(delegations)-1; i++ {
+		current := delegations[i].Timestamp
+		next := delegations[i+1].Timestamp
+		assert.GreaterOrEqual(t, current, next,
+			"Delegations should be ordered most recent first (index %d: %s should be >= %s)",
+			i, current, next)
+	}
+	t.Logf("✅ Ordering verified: most recent first")
+}
+
+// assertAllDelegationsFromYear verifies all delegations are from the specified year
+func assertAllDelegationsFromYear(t *testing.T, delegations []api.Delegation, year int) {
+	t.Helper()
+
+	for i, delegation := range delegations {
+		timestamp, err := time.Parse(time.RFC3339, delegation.Timestamp)
+		require.NoError(t, err, "Should parse delegation timestamp")
+
+		actualYear := timestamp.Year()
+		assert.Equal(t, year, actualYear, "Delegation %d should be from year %d, got %d", i, year, actualYear)
+	}
+}
+
+// assertAllDelegationsHaveValidFormat verifies all delegations match the expected format
+func assertAllDelegationsHaveValidFormat(t *testing.T, delegations []api.Delegation) {
+	t.Helper()
+
+	for i, delegation := range delegations {
+		assertValidDelegationFormat(t, delegation, i)
+	}
+}
+
+// assertValidDelegationFormat verifies a single delegation matches TASK.md specification
+func assertValidDelegationFormat(t *testing.T, delegation api.Delegation, index int) {
+	t.Helper()
+
+	assert.NotEmpty(t, delegation.Timestamp, "Delegation %d should have timestamp", index)
+	assert.NotEmpty(t, delegation.Amount, "Delegation %d should have amount", index)
+	assert.NotEmpty(t, delegation.Delegator, "Delegation %d should have delegator", index)
+	assert.NotEmpty(t, delegation.Level, "Delegation %d should have level", index)
+}
+
+// assertPaginationLinksPresent verifies Link header is present
+func assertPaginationLinksPresent(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.NotEmpty(t, linkHeader, "Should provide Link header when pagination is needed")
+}
+
+// assertPaginationLinksAbsent verifies Link header is absent
+func assertPaginationLinksAbsent(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.Empty(t, linkHeader, "Should omit Link header when all results fit on first page")
+}
+
+// assertContainsNextLink verifies Link header contains next link
+func assertContainsNextLink(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.Contains(t, linkHeader, `rel="next"`, "Should provide next link when more pages exist")
+}
+
+// assertMissingPrevLink verifies Link header does not contain prev link
+func assertMissingPrevLink(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.NotContains(t, linkHeader, `rel="prev"`, "Should not provide prev link on first page")
+}
+
+// assertContainsPrevLink verifies Link header contains prev link
+func assertContainsPrevLink(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.Contains(t, linkHeader, `rel="prev"`, "Should provide prev link when not on first page")
+}
+
+// assertCorrectPageNavigation verifies navigation links point to correct pages
+func assertCorrectPageNavigation(t *testing.T, resp *http.Response, expectedPrevPage, expectedPerPage int) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.Contains(t, linkHeader, fmt.Sprintf("page=%d", expectedPrevPage), "Prev link should point to page %d", expectedPrevPage)
+	assert.Contains(t, linkHeader, fmt.Sprintf("per_page=%d", expectedPerPage), "All links should preserve per_page parameter")
+}
+
+// assertPreservesQueryParameters verifies pagination links preserve query parameters
+func assertPreservesQueryParameters(t *testing.T, resp *http.Response, expectedParams map[string]string) {
+	t.Helper()
+
+	linkHeader := resp.Header.Get("Link")
+	assert.NotEmpty(t, linkHeader, "Should provide Link header on middle pages with parameters")
+
+	for param, value := range expectedParams {
+		expectedParam := fmt.Sprintf("%s=%s", param, value)
+		assert.Contains(t, linkHeader, expectedParam, "Should preserve %s parameter in navigation links", param)
+	}
+}
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+// parseJSONResponse parses HTTP response body as JSON into the specified type
+func parseJSONResponse[T any](t *testing.T, resp *http.Response) T {
+	t.Helper()
+
+	defer resp.Body.Close()
+
+	var result T
+	err := json.NewDecoder(resp.Body).Decode(&result)
+	require.NoError(t, err, "Response should be valid JSON")
+
+	return result
 }
 
 // insertTestDelegations manually inserts a few test delegations for Link header omission test

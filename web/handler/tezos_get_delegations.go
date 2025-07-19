@@ -41,17 +41,16 @@ func (h *TezosGetDelegations) GetDelegations(w http.ResponseWriter, r *http.Requ
 		return httpkit.JsonError(api.BadRequest(err))
 	}
 
-	// Convert API request to domain criteria
-	criteria := tezos.DelegationsCriteria{
-		Year: req.Year, // 0 means no year filtering
-		Page: req.Page,
-		Size: req.PerPage,
+	// Create domain criteria with validation
+	criteria, err := tezos.NewDelegationsCriteria(req.Year, req.Page, req.PerPage)
+	if err != nil {
+		return httpkit.JsonError(api.BadRequest(err))
 	}
 
 	// Query delegations
 	page, err := h.finder.FindDelegations(r.Context(), criteria)
 	if err != nil {
-		return httpkit.JsonError(api.InternalServerError(ErrQueryFailed))
+		return httpkit.JsonError(api.InternalServerError(fmt.Errorf("%w: %w", ErrQueryFailed, err)))
 	}
 
 	// Build GitHub-style Link header for navigation

@@ -43,6 +43,7 @@ SHELL := bash
 # Declare all phony targets upfront
 .PHONY: help deps tools clean all
 .PHONY: fmt lint check test coverage coverage-html coverage-svg
+.PHONY: sync-modules update-modules verify-modules
 .PHONY: build build-migrator build-scraper build-web show-version
 .PHONY: run run-migrator run-scraper run-scraper-demo run-web
 .PHONY: run-demo run-migrator-demo run-scraper-demo
@@ -71,13 +72,32 @@ tools: ## List all installed development tools
 	@go list tool
 
 #
+# Module Management
+#
+
+sync-modules: ## Sync workspace and tidy all Go modules (fast, no updates)
+	@echo -e "$(OK_COLOR)--> Syncing workspace and tidying all modules$(NO_COLOR)"
+	@go work sync
+	@find . -name go.mod | xargs -I {} dirname {} | xargs -I {} sh -c 'cd {} && go mod tidy'
+
+update-modules: ## Update all dependencies to latest versions and tidy
+	@echo -e "$(OK_COLOR)--> Updating all modules to latest versions$(NO_COLOR)"
+	@go work sync
+	@find . -name go.mod | xargs -I {} dirname {} | xargs -I {} sh -c 'cd {} && go get -u ./... && go mod tidy'
+
+verify-modules: ## Verify all modules are consistent and properly synced
+	@echo -e "$(OK_COLOR)--> Verifying module consistency$(NO_COLOR)"
+	@go work sync
+	@find . -name go.mod | xargs -I {} dirname {} | xargs -I {} sh -c 'cd {} && go mod verify && go mod tidy -diff'
+
+#
 # Code Quality
 #
 
 fmt: ## Format Go code and organize imports
 	@echo -e "$(OK_COLOR)--> Formatting Go code$(NO_COLOR)"
-	@go work sync && \
-	 go tool gofumpt -l -w . && \
+	@$(MAKE) --no-print-directory sync-modules
+	@go tool gofumpt -l -w . && \
 	 go tool gci write $(GO_FILES) -s standard -s default -s "prefix($(LOCAL_PACKAGES))"
 
 lint: ## Run golangci-lint static analysis

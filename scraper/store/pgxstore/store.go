@@ -66,8 +66,32 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // No-op if commit succeeds
 
-	// Create temporary table for bulk insert
-	_, err = tx.Exec(ctx, `
+	if err := s.createTempTable(ctx, tx); err != nil {
+		return err
+	}
+
+	if err := s.bulkCopyToTemp(ctx, tx, rows); err != nil {
+		return err
+	}
+
+	if err := s.insertFromTempToMain(ctx, tx); err != nil {
+		return err
+	}
+
+	if err := s.updateCheckpoint(ctx, tx, delegations); err != nil {
+		return err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("%w: %w", ErrTransactionFailed, err)
+	}
+
+	return nil
+}
+
+// createTempTable creates a temporary table for bulk operations
+func (s *Store) createTempTable(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `
 		CREATE TEMPORARY TABLE temp_delegations (
 			id BIGINT,
 			timestamp TIMESTAMP WITH TIME ZONE,
@@ -80,9 +104,12 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrTempTableFailed, err)
 	}
+	return nil
+}
 
-	// Use CopyFrom for extremely fast bulk insert into temporary table
-	_, err = tx.CopyFrom(
+// bulkCopyToTemp performs bulk insert into temporary table using CopyFrom
+func (s *Store) bulkCopyToTemp(ctx context.Context, tx pgx.Tx, rows [][]any) error {
+	_, err := tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_delegations"},
 		[]string{"id", "timestamp", "amount", "delegator", "level", "year"},
@@ -91,10 +118,12 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCopyFailed, err)
 	}
+	return nil
+}
 
-	// Insert from temporary table to main table with conflict resolution
-	// created_at will be populated by database DEFAULT CURRENT_TIMESTAMP
-	_, err = tx.Exec(ctx, `
+// insertFromTempToMain transfers data from temporary table to main table with conflict resolution
+func (s *Store) insertFromTempToMain(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `
 		INSERT INTO delegations (id, timestamp, amount, delegator, level, year)
 		SELECT id, timestamp, amount, delegator, level, year
 		FROM temp_delegations
@@ -103,22 +132,20 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInsertFailed, err)
 	}
+	return nil
+}
 
+// updateCheckpoint updates the scraper checkpoint with the highest delegation ID
+func (s *Store) updateCheckpoint(ctx context.Context, tx pgx.Tx, delegations []scraper.Delegation) error {
 	// Since delegations are sorted by ID, the last one has the highest ID
 	checkpointID := delegations[len(delegations)-1].ID
 
-	// Update checkpoint (singleton table with proper upsert)
-	_, err = tx.Exec(ctx, `
+	_, err := tx.Exec(ctx, `
 		INSERT INTO scraper_checkpoint (single_row, last_id) VALUES (TRUE, $1) 
 		ON CONFLICT (single_row) DO UPDATE SET last_id = $1
 	`, checkpointID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCheckpointFailed, err)
 	}
-
-	if err = tx.Commit(ctx); err != nil {
-		return fmt.Errorf("%w: %w", ErrTransactionFailed, err)
-	}
-
 	return nil
 }

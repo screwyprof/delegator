@@ -16,121 +16,40 @@ var (
 	ErrInvalidYear    = errors.New("invalid year parameter")
 	ErrInvalidPage    = errors.New("invalid page parameter")
 	ErrInvalidPerPage = errors.New("invalid per_page parameter")
-
-	// Specific year validation errors
-	ErrYearNotYYYYFormat = errors.New("year must be exactly 4 digits (YYYY format)")
-	ErrYearNotNumeric    = errors.New("year must be numeric")
-	ErrYearOutOfRange    = errors.New("year must be between 2018 and current year + 10")
-
-	// Specific page validation errors
-	ErrPageNotNumeric  = errors.New("page must be numeric")
-	ErrPageNotPositive = errors.New("page must be positive")
-
-	// Specific per_page validation errors
-	ErrPerPageNotNumeric  = errors.New("per_page must be numeric")
-	ErrPerPageNotPositive = errors.New("per_page must be positive")
-	ErrPerPageTooLarge    = errors.New("per_page must be between 1 and 100")
 )
 
-// GetDelegationsRequest binds HTTP request to DelegationsRequest with defaults
+// GetDelegationsRequest binds HTTP request to DelegationsRequest
 func GetDelegationsRequest(r *http.Request) (api.DelegationsRequest, error) {
-	req := api.DelegationsRequest{
-		Year:    0,  // 0 means no year filter
-		Page:    1,  // Default to first page
-		PerPage: 50, // Default pagination size
-	}
-
 	query := r.URL.Query()
 
-	// Parse year parameter
-	if yearParam := query.Get("year"); yearParam != "" {
-		year, err := parseYearYYYY(yearParam)
-		if err != nil {
-			return req, fmt.Errorf("%w: %w", ErrInvalidYear, err)
-		}
-		req.Year = year
+	year, err := parseUintEmptyAsZero(query.Get("year"))
+	if err != nil {
+		return api.DelegationsRequest{}, fmt.Errorf("%w: %w", ErrInvalidYear, err)
 	}
 
-	// Parse page parameter
-	if pageParam := query.Get("page"); pageParam != "" {
-		page, err := parsePageNumber(pageParam)
-		if err != nil {
-			return req, fmt.Errorf("%w: %w", ErrInvalidPage, err)
-		}
-		req.Page = page
+	page, err := parseUintEmptyAsZero(query.Get("page"))
+	if err != nil {
+		return api.DelegationsRequest{}, fmt.Errorf("%w: %w", ErrInvalidPage, err)
 	}
 
-	// Parse per_page parameter
-	if perPageParam := query.Get("per_page"); perPageParam != "" {
-		perPage, err := parsePerPageLimit(perPageParam)
-		if err != nil {
-			return req, fmt.Errorf("%w: %w", ErrInvalidPerPage, err)
-		}
-		req.PerPage = perPage
+	perPage, err := parseUintEmptyAsZero(query.Get("per_page"))
+	if err != nil {
+		return api.DelegationsRequest{}, fmt.Errorf("%w: %w", ErrInvalidPerPage, err)
 	}
 
-	return req, nil
+	return api.DelegationsRequest{
+		Year:    year,
+		Page:    page,
+		PerPage: perPage,
+	}, nil
 }
 
-// parseYearYYYY validates that the year parameter follows YYYY format (4 digits, reasonable range)
-// As specified in TASK.md: "year, which is specified in the format YYYY"
-func parseYearYYYY(yearParam string) (uint64, error) {
-	// Must be exactly 4 characters
-	if len(yearParam) != 4 {
-		return 0, ErrYearNotYYYYFormat
+// parseUintEmptyAsZero parses string to uint64, treats empty string as 0
+func parseUintEmptyAsZero(s string) (uint64, error) {
+	if s == "" {
+		return 0, nil
 	}
-
-	// Must parse as a number
-	year, err := strconv.ParseUint(yearParam, 10, 64)
-	if err != nil {
-		return 0, ErrYearNotNumeric
-	}
-
-	// Must be in reasonable range for Tezos (launched 2018) + some future buffer
-	// Tezos launched in 2018, so years before that don't make sense
-	// Upper bound is generous to allow for future data
-	currentYear := uint64(time.Now().Year())
-	if year < 2018 || year > currentYear+10 {
-		return 0, ErrYearOutOfRange
-	}
-
-	return year, nil
-}
-
-// parsePageNumber validates that the page parameter is a positive integer
-func parsePageNumber(pageParam string) (uint64, error) {
-	// Must parse as a number
-	page, err := strconv.ParseUint(pageParam, 10, 64)
-	if err != nil {
-		return 0, ErrPageNotNumeric
-	}
-
-	// Must be positive
-	if page == 0 {
-		return 0, ErrPageNotPositive
-	}
-
-	return page, nil
-}
-
-// parsePerPageLimit validates that the per_page parameter is within acceptable limits
-func parsePerPageLimit(perPageParam string) (uint64, error) {
-	// Must parse as a number
-	perPage, err := strconv.ParseUint(perPageParam, 10, 64)
-	if err != nil {
-		return 0, ErrPerPageNotNumeric
-	}
-
-	// Must be positive and within reasonable limits
-	if perPage == 0 {
-		return 0, ErrPerPageNotPositive
-	}
-
-	if perPage > 100 {
-		return 0, ErrPerPageTooLarge
-	}
-
-	return perPage, nil
+	return strconv.ParseUint(s, 10, 64)
 }
 
 // GetDelegationsResponse binds domain delegations to API response format
@@ -139,9 +58,9 @@ func GetDelegationsResponse(delegations []tezos.Delegation) api.DelegationsRespo
 	for i, del := range delegations {
 		apiDelegations[i] = api.Delegation{
 			Timestamp: del.Timestamp.Format(time.RFC3339),
-			Amount:    strconv.FormatInt(del.Amount, 10),
+			Amount:    fmt.Sprintf("%d", del.Amount),
 			Delegator: del.Delegator,
-			Level:     strconv.FormatInt(del.Level, 10),
+			Level:     fmt.Sprintf("%d", del.Level),
 		}
 	}
 

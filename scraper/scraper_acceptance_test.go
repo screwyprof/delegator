@@ -39,11 +39,7 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		testCfg := testcfg.New()
 
 		// prod config
-		prodCfg := config.New()
-		prodCfg.ChunkSize = testCfg.ChunkSize
-		prodCfg.PollInterval = testCfg.PollInterval
-		prodCfg.HttpClientTimeout = testCfg.HttpClientTimeout
-		prodCfg.TzktAPIURL = testCfg.TzktAPIURL
+		cfg := createProdCfg(testCfg)
 
 		// Create test database with schema + checkpoint (migrator concern)
 		testDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", uint64(testCfg.Checkpoint))
@@ -58,10 +54,10 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		store, storeCloser := pgxstore.New(productionDB)
 		defer storeCloser()
 
-		httpClient := &http.Client{Timeout: testCfg.HttpClientTimeout}
-		client := tzkt.NewClient(httpClient, testCfg.TzktAPIURL)
+		httpClient := &http.Client{Timeout: cfg.HttpClientTimeout}
+		client := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
 
-		service := createTestService(t, client, store, testCfg)
+		service := createTestService(t, client, store, cfg)
 
 		// Act
 		backfillResult := runScraperUntilPollingStarts(t, service, testCfg.ShutdownTimeout)
@@ -206,14 +202,14 @@ func assertTimestampsAreValid(t *testing.T, testDB *pgxpool.Pool, ctx context.Co
 }
 
 // createTestService creates a scraper service with test-optimized configuration
-func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store, testCfg testcfg.Config) *scraper.Service {
+func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store, cfg config.Config) *scraper.Service {
 	t.Helper()
 
 	return scraper.NewService(
 		client,
 		store,
-		scraper.WithChunkSize(testCfg.ChunkSize),
-		scraper.WithPollInterval(testCfg.PollInterval),
+		scraper.WithChunkSize(cfg.ChunkSize),
+		scraper.WithPollInterval(cfg.PollInterval),
 	)
 }
 
