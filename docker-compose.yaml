@@ -53,12 +53,33 @@ services:
       MIGRATOR_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
       MIGRATOR_MIGRATIONS_DIR: /migrations
       MIGRATOR_INITIAL_CHECKPOINT: ${MIGRATOR_INITIAL_CHECKPOINT:-0}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_HUMAN_FRIENDLY: ${LOG_HUMAN_FRIENDLY:-true}
       MIGRATOR_OPERATION_TIMEOUT: ${MIGRATOR_OPERATION_TIMEOUT:-30s}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_HUMAN_FRIENDLY: ${LOG_HUMAN_FRIENDLY:-false}
+
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
+
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.scraper
+      args:
+        VERSION: ${VERSION:-dev}
+        DATE: ${DATE:-unknown}
+    environment:
+      SCRAPER_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
+      SCRAPER_CHUNK_SIZE: ${SCRAPER_CHUNK_SIZE:-10000}
+      SCRAPER_POLL_INTERVAL: ${SCRAPER_POLL_INTERVAL:-10s}
+      SCRAPER_TZKT_API_URL: ${SCRAPER_TZKT_API_URL:-https://api.tzkt.io}
+      SCRAPER_HTTP_CLIENT_TIMEOUT: ${SCRAPER_HTTP_CLIENT_TIMEOUT:-10s}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_HUMAN_FRIENDLY: ${LOG_HUMAN_FRIENDLY:-false}
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
  

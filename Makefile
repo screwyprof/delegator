@@ -6,16 +6,7 @@ LOCAL_PACKAGES := "github.com/screwyprof/"
 # Architecture detection removed - letting Docker handle it natively
 
 # Version handling - CI can override with: make build VERSION=v1.2.3
-VERSION ?= $(shell \
-	TAG=$$(git describe --tags --exact-match HEAD 2>/dev/null); \
-	if [ -n "$$TAG" ]; then \
-		echo "$$TAG"; \
-	elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
-		echo "$$(git rev-parse --abbrev-ref HEAD)-$$(git rev-parse --short HEAD)"; \
-	else \
-		echo "dev"; \
-	fi)
-
+VERSION ?= $(strip $(shell command git describe --tags --always --dirty --long 2>/dev/null || echo dev))
 DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Build configuration
@@ -32,6 +23,9 @@ OK_COLOR := \033[32;01m
 NO_COLOR := \033[0m
 MAKE_COLOR := \033[33;01m%-25s\033[0m
 
+# Don't print the directory name before each command
+MAKEFLAGS += --no-print-directory
+
 # Shell and default goal
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
@@ -40,8 +34,9 @@ SHELL := bash
 # Declare all phony targets upfront
 .PHONY: help deps tools clean all
 .PHONY: fmt lint check test coverage coverage-html coverage-svg
-.PHONY: build build-migrator
-.PHONY: run-migrator run-migrator-demo run-scraper run-scraper-demo run-web run
+.PHONY: build build-migrator build-scraper
+.PHONY: run run-migrator run-scraper run-scraper-demo run-web
+.PHONY: run-demo run-migrator-demo run-scraper-demo
 
 help: ## Show this help screen
 	@echo -e "$(OK_COLOR)Delegator - Tezos Delegation Service$(NO_COLOR)\n"
@@ -121,11 +116,15 @@ build-migrator: ## Build migrator binary with version metadata
 	@echo -e "$(OK_COLOR)--> Building migrator service (version: $(VERSION))$(NO_COLOR)"
 	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/migrator ./cmd/migrator
 
-# Build all services (migrator uses build-migrator)
+# Build scraper with version metadata
+build-scraper: ## Build scraper binary with version metadata
+	@echo -e "$(OK_COLOR)--> Building scraper service (version: $(VERSION))$(NO_COLOR)"
+	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/scraper ./cmd/scraper
+
+# Build all services (migrator & scraper)
 build: ## Build all services
 	@$(MAKE) build-migrator
-	@echo -e "$(OK_COLOR)--> Building scraper service$(NO_COLOR)"
-	@go build -o bin/scraper cmd/scraper/main.go
+	@$(MAKE) build-scraper
 	@echo -e "$(OK_COLOR)--> Building web API service$(NO_COLOR)"
 	@go build -o bin/web cmd/web/main.go
 
@@ -163,8 +162,11 @@ run-web: ## Run web API service
 	@echo -e "$(OK_COLOR)--> Starting web API service$(NO_COLOR)"
 	@go run cmd/web/main.go
 
-run: ## Run docker-compose using .env.docker
-	@VERSION=$(VERSION) DATE=$(DATE) docker-compose --env-file .env.docker up --build
+run: ## Run docker-compose in "production" mode
+	@VERSION=$(VERSION) DATE=$(DATE) docker-compose up --build
+
+run-demo: ## Run docker-compose in "demo" mode with limited data subset
+	@VERSION=$(VERSION) DATE=$(DATE) docker-compose --env-file .env.dev up --build
 
 #
 # Common Development Workflow

@@ -16,6 +16,11 @@ import (
 	"github.com/screwyprof/delegator/scraper/store/pgxstore"
 )
 
+var (
+	version = "dev"
+	date    = "unknown"
+)
+
 func main() {
 	// Load configuration
 	cfg := config.New()
@@ -60,6 +65,8 @@ func main() {
 	// Start service
 	log.InfoContext(ctx, "Starting delegation scraper service",
 		slog.Uint64("chunkSize", cfg.ChunkSize),
+		slog.String("version", version),
+		slog.String("date", date),
 	)
 	events, done := scraperService.Start(ctx)
 
