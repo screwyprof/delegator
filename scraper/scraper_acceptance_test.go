@@ -12,57 +12,61 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/screwyprof/delegator/cmd/scraper/config"
+	"github.com/screwyprof/delegator/migrator/migratortest"
 	"github.com/screwyprof/delegator/pkg/pgxdb"
-	"github.com/screwyprof/delegator/pkg/pgxdb/pgxdbtest"
 	"github.com/screwyprof/delegator/pkg/tzkt"
 	"github.com/screwyprof/delegator/scraper"
 	"github.com/screwyprof/delegator/scraper/store/pgxstore"
-)
-
-const (
-	// lastCheckpoint is a historical checkpoint for acceptance tests (recent data only)
-	lastCheckpoint = int64(1939557726552064)
-	// chunkSize is a smaller chunk size for acceptance tests
-	chunkSize = uint64(1000)
+	"github.com/screwyprof/delegator/scraper/testcfg"
 )
 
 // TestScraperAcceptanceBehavior tests end-to-end scraper functionality with real PostgreSQL and Tezos API
+//
+// Configuration:
+//   - Uses testcfg.New() for test-optimized parameters:
+//     ChunkSize=1000 (vs 10000 in production) for faster tests
+//     PollInterval=100ms (vs 10s in production) for faster tests
+//   - Override via environment variables if needed (SCRAPER_TEST_CHUNK_SIZE, etc.)
 func TestScraperAcceptanceBehavior(t *testing.T) {
 	t.Parallel()
 
-	t.Run("it processes delegations from historical checkpoint and stores them in database", func(t *testing.T) {
+	t.Run("it successfully fetches and stores delegations", func(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		testDB, dbURL := pgxdbtest.CreateTestDatabase(t, "../migrations")
+		// Load test configuration (ALL test-optimized parameters)
+		testCfg := testcfg.New()
+
+		// Create test database with schema + checkpoint (migrator concern)
+		testDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", uint64(testCfg.Checkpoint))
 		defer testDB.Close()
 
-		store, storeCloser := createConnection(t, dbURL)
+		// Create separate connection for production code (connection isolation)
+		productionDB, err := pgxdb.NewConnection(t.Context(), testDB.Config().ConnString())
+		require.NoError(t, err)
+		defer productionDB.Close()
+
+		// Production code uses its own connection
+		store, storeCloser := pgxstore.New(productionDB)
 		defer storeCloser()
 
-		// Create config for test
-		cfg := createTestConfig()
+		httpClient := &http.Client{Timeout: testCfg.HttpClientTimeout}
+		client := tzkt.NewClient(httpClient, testCfg.TzktAPIURL)
 
-		// Initialize the checkpoint in database
-		pgxdbtest.InitializeCheckpoint(t, testDB, int64(cfg.InitialCheckpoint))
-
-		httpClient := &http.Client{Timeout: cfg.HttpClientTimeout}
-		client := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
-
-		service := createTestService(t, client, store, cfg)
+		service := createTestService(t, client, store, testCfg)
 
 		// Act
-		backfillResult := runScraperUntilPollingStarts(t, service)
+		backfillResult := runScraperUntilPollingStarts(t, service, testCfg.ShutdownTimeout)
 
 		// Assert
 		assertBackfillSucceeded(t, backfillResult)
-		assertDataWasStoredCorrectly(t, testDB, store)(backfillResult, int64(cfg.InitialCheckpoint))
+		// Test assertions use separate connection for isolation
+		assertDataWasStoredCorrectly(t, testDB)(backfillResult, testCfg.Checkpoint)
 	})
 }
 
 // runScraperUntilPollingStarts executes the scraper and returns backfill results
-func runScraperUntilPollingStarts(t *testing.T, service *scraper.Service) scraper.BackfillDone {
+func runScraperUntilPollingStarts(t *testing.T, service *scraper.Service, shutdownTimeout time.Duration) scraper.BackfillDone {
 	t.Helper()
 
 	// Create cancellable context for service
@@ -97,7 +101,7 @@ func runScraperUntilPollingStarts(t *testing.T, service *scraper.Service) scrape
 	select {
 	case <-done:
 		t.Log("Service shut down cleanly")
-	case <-time.After(5 * time.Second):
+	case <-time.After(shutdownTimeout):
 		t.Fatal("Service did not shut down within timeout")
 	}
 
@@ -113,23 +117,21 @@ func assertBackfillSucceeded(t *testing.T, backfillResult scraper.BackfillDone) 
 }
 
 // assertDataWasStoredCorrectly returns a verification function that captures dependencies
-func assertDataWasStoredCorrectly(t *testing.T, testDB *pgxpool.Pool, store *pgxstore.Store) func(backfillResult scraper.BackfillDone, startCheckpoint int64) {
+func assertDataWasStoredCorrectly(t *testing.T, testDB *pgxpool.Pool) func(scraper.BackfillDone, int64) {
+	t.Helper()
+
 	return func(backfillResult scraper.BackfillDone, startCheckpoint int64) {
-		t.Helper()
-
 		ctx := t.Context()
-		backfillCount := backfillResult.TotalProcessed
 
-		assertDatabaseCountMatchesBackfill(t, testDB, ctx, backfillCount)
-
-		if backfillCount == 0 {
+		if backfillResult.TotalProcessed == 0 {
 			t.Error("No delegations were processed - this may indicate checkpoint is too far in future or doesn't exist")
 			return
 		}
 
-		assertCheckpointAdvanced(t, store, ctx, startCheckpoint)
+		assertDatabaseCountMatchesBackfill(t, testDB, ctx, backfillResult.TotalProcessed)
+		assertCheckpointAdvanced(t, testDB, ctx, startCheckpoint)
 		assertFirstDelegationAfterCheckpoint(t, testDB, ctx, startCheckpoint)
-		assertLastDelegationMatchesCheckpoint(t, testDB, store, ctx)
+		assertLastDelegationMatchesCheckpoint(t, testDB, ctx)
 		assertTimestampsAreValid(t, testDB, ctx)
 	}
 }
@@ -145,15 +147,16 @@ func assertDatabaseCountMatchesBackfill(t *testing.T, testDB *pgxpool.Pool, ctx 
 }
 
 // assertCheckpointAdvanced verifies the checkpoint was updated beyond the starting point
-func assertCheckpointAdvanced(t *testing.T, store *pgxstore.Store, ctx context.Context, startCheckpoint int64) {
+func assertCheckpointAdvanced(t *testing.T, testDB *pgxpool.Pool, ctx context.Context, startCheckpoint int64) {
 	t.Helper()
 
-	finalCheckpoint, err := store.LastProcessedID(ctx)
+	var finalCheckpoint int64
+	err := testDB.QueryRow(ctx, "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&finalCheckpoint)
 	require.NoError(t, err)
 	assert.Greater(t, finalCheckpoint, startCheckpoint, "Checkpoint should have advanced beyond starting point")
 }
 
-// assertFirstDelegationAfterCheckpoint verifies first stored delegation starts after checkpoint
+// assertFirstDelegationAfterCheckpoint verifies first delegation ID is greater than checkpoint
 func assertFirstDelegationAfterCheckpoint(t *testing.T, testDB *pgxpool.Pool, ctx context.Context, startCheckpoint int64) {
 	t.Helper()
 
@@ -164,14 +167,15 @@ func assertFirstDelegationAfterCheckpoint(t *testing.T, testDB *pgxpool.Pool, ct
 }
 
 // assertLastDelegationMatchesCheckpoint verifies last delegation ID matches final checkpoint
-func assertLastDelegationMatchesCheckpoint(t *testing.T, testDB *pgxpool.Pool, store *pgxstore.Store, ctx context.Context) {
+func assertLastDelegationMatchesCheckpoint(t *testing.T, testDB *pgxpool.Pool, ctx context.Context) {
 	t.Helper()
 
 	var lastID int64
 	err := testDB.QueryRow(ctx, "SELECT id FROM delegations ORDER BY id DESC LIMIT 1").Scan(&lastID)
 	require.NoError(t, err)
 
-	finalCheckpoint, err := store.LastProcessedID(ctx)
+	var finalCheckpoint int64
+	err = testDB.QueryRow(ctx, "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&finalCheckpoint)
 	require.NoError(t, err)
 
 	assert.Equal(t, lastID, finalCheckpoint, "Last delegation ID should match final checkpoint")
@@ -193,34 +197,14 @@ func assertTimestampsAreValid(t *testing.T, testDB *pgxpool.Pool, ctx context.Co
 	assert.False(t, lastTimestamp.IsZero(), "Last timestamp should not be zero")
 }
 
-// createTestConfig creates configuration optimized for testing
-func createTestConfig() config.Config {
-	cfg := config.New()
-	cfg.InitialCheckpoint = uint64(lastCheckpoint)
-	cfg.ChunkSize = chunkSize
-
-	return cfg
-}
-
-// createTestService creates a scraper service with test configuration
-func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store, cfg config.Config) *scraper.Service {
+// createTestService creates a scraper service with test-optimized configuration
+func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store, testCfg testcfg.Config) *scraper.Service {
 	t.Helper()
 
 	return scraper.NewService(
 		client,
 		store,
-		scraper.WithChunkSize(cfg.ChunkSize),
-		scraper.WithPollInterval(cfg.PollInterval),
+		scraper.WithChunkSize(testCfg.ChunkSize),
+		scraper.WithPollInterval(testCfg.PollInterval),
 	)
-}
-
-// createConnection creates a store connection to the test database
-func createConnection(t *testing.T, dbURL string) (*pgxstore.Store, func()) {
-	t.Helper()
-
-	pool, err := pgxdb.NewConnection(t.Context(), dbURL)
-	require.NoError(t, err)
-
-	store, closer := pgxstore.New(pool)
-	return store, closer
 }

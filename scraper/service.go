@@ -181,10 +181,7 @@ func (s *Service) syncBatch(ctx context.Context, chunkSize uint64) (SyncResult, 
 	}
 
 	// Convert API delegations to domain delegations
-	domainDelegations, err := convertTzktDelegations(batch)
-	if err != nil {
-		return SyncResult{}, fmt.Errorf("%w: %w", ErrConversionFailed, err)
-	}
+	domainDelegations := convertTzktDelegations(batch)
 
 	// save batch; store updates checkpoint internally
 	err = s.store.SaveBatch(ctx, domainDelegations)
@@ -201,7 +198,7 @@ func (s *Service) syncBatch(ctx context.Context, chunkSize uint64) (SyncResult, 
 }
 
 // convertTzktDelegations converts API delegations to domain delegations
-func convertTzktDelegations(tzktDelegations []tzkt.Delegation) ([]Delegation, error) {
+func convertTzktDelegations(tzktDelegations []tzkt.Delegation) []Delegation {
 	delegations := make([]Delegation, len(tzktDelegations))
 
 	for i, tzktDel := range tzktDelegations {
@@ -214,5 +211,5 @@ func convertTzktDelegations(tzktDelegations []tzkt.Delegation) ([]Delegation, er
 		}
 	}
 
-	return delegations, nil
+	return delegations
 }

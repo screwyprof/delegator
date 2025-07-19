@@ -1,0 +1,50 @@
+# Exclude binaries and OS artefacts (mirrors .gitignore)
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# Coverage files and directories
+*.cov
+coverage/
+
+# Dist and build directories
+/dist/
+
+# IDE/editor files
+.idea/
+
+# OS-generated files
+.DS_Store
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Nix build results
+result
+aresult-* 
+
+tmp/ 
+
+# VCS and workspace metadata
+.git
+.vscode
+.cursor
+.direnv
+
+# Local env files
+.env*
+
+# Build outputs and artifacts
+bin
+*.out
+
+# Go test files and data
+**/*_test.go
+**/testdata
+
+# Documentation and markdown (not needed in image)
+**/*.md
+**/*.MD 

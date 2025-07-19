@@ -3,7 +3,6 @@
 package tzkt_test
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -12,33 +11,29 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/screwyprof/delegator/pkg/tzkt"
-)
-
-const (
-	// Configuration constants for acceptance testing
-	limit       = 5
-	offset      = 100000 // Use older data for more stable test results
-	httpTimeout = 30 * time.Second
-	tzktBaseURL = "https://api.tzkt.io"
+	"github.com/screwyprof/delegator/pkg/tzkt/testcfg"
 )
 
 func TestTzktClientRealAPI(t *testing.T) {
 	t.Parallel()
 
+	// Load test configuration from environment
+	testCfg := testcfg.New()
+
 	// Arrange
 	client := tzkt.NewClient(&http.Client{
-		Timeout: httpTimeout,
-	}, tzktBaseURL)
+		Timeout: testCfg.HTTPTimeout,
+	}, testCfg.BaseURL)
 
 	// Act - Call the real Tzkt API with offset for more stable data
-	delegations, err := client.GetDelegations(context.Background(), tzkt.DelegationsRequest{
-		Limit:  limit,
-		Offset: offset,
+	delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
+		Limit:  testCfg.Limit,
+		Offset: testCfg.Offset,
 	})
 
 	// Assert - Verify we get valid delegation data structure
 	require.NoError(t, err)
-	assert.Len(t, delegations, limit, "Expected exactly %d delegations with limit=%d", limit, limit)
+	assert.Len(t, delegations, int(testCfg.Limit), "Expected exactly %d delegations with limit=%d", testCfg.Limit, testCfg.Limit)
 
 	// Verify each delegation has required fields with valid data
 	for i, delegation := range delegations {
@@ -51,6 +46,10 @@ func TestTzktClientRealAPI(t *testing.T) {
 
 		// Verify timestamp is parseable to RFC3339 (proves it came from valid JSON)
 		timestampStr := delegation.Timestamp.Format(time.RFC3339)
-		assert.Contains(t, timestampStr, "T", "Delegation %d timestamp should be RFC3339 format", i)
+		_, err := time.Parse(time.RFC3339, timestampStr)
+		assert.NoError(t, err, "Delegation %d timestamp should be valid RFC3339: %s", i, timestampStr)
+
+		t.Logf("Delegation %d: ID=%d, Level=%d, Amount=%d, Sender=%s, Timestamp=%s",
+			i, delegation.ID, delegation.Level, delegation.Amount, delegation.Sender.Address, timestampStr)
 	}
 }

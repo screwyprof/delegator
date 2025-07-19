@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:1.4
+
+############################
+# 1. Build Stage           #
+############################
+FROM golang:1.24-alpine AS builder
+
+# Install git for fetching private / VCS-hosted modules
+RUN apk add --no-cache git
+
+# Set working directory inside the container
+WORKDIR /src
+
+# --- copy go metadata first to leverage Docker layer caching ----
+# Root module + workspace
+COPY go.mod go.sum go.work ./
+# Individual module manifests that the migrator depends on
+COPY migrator/go.mod  ./migrator/go.mod
+COPY pkg/go.mod       ./pkg/go.mod
+COPY scraper/go.mod   ./scraper/go.mod
+COPY web/go.mod       ./web/go.mod
+
+# Download dependencies (cached if go.mod/go.sum unchanged)
+RUN go mod download
+
+# --- copy the rest of the source code ---
+COPY . .
+
+# Optional build-time metadata
+ARG VERSION=dev
+ARG DATE=unknown
+
+# Build the migrator binary. CGO disabled for a static binary.
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=linux \
+    go build -trimpath -ldflags="-s -w -X 'main.version=${VERSION}' -X 'main.date=${DATE}'" -o /bin/migrator ./cmd/migrator
+
+############################
+# 2. Runtime Stage         #
+############################
+FROM scratch AS runtime
+
+# Copy CA certificates for HTTPS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /bin/migrator /migrator
+
+# Copy migrations directory required by the service
+COPY --from=builder /src/migrator/migrations /migrations
+
+# Run as non-root user (UID 10001, no home directory needed)
+USER 10001
+
+# Run!
+ENTRYPOINT ["/migrator"]
+
+# Supply version label for traceability
+LABEL org.opencontainers.image.version=${VERSION} \
+      org.opencontainers.image.revision=${VERSION} \
+      org.opencontainers.image.created=${DATE} 

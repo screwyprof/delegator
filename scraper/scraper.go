@@ -13,7 +13,6 @@ var (
 	ErrCheckpointRetrieval = errors.New("checkpoint retrieval failed")
 	ErrAPIRequestFailed    = errors.New("API request failed")
 	ErrSaveBatchFailed     = errors.New("save batch failed")
-	ErrConversionFailed    = errors.New("delegation conversion failed")
 	ErrInvalidTimestamp    = errors.New("invalid delegation timestamp")
 )
 

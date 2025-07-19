@@ -2,6 +2,9 @@
 PKG := github.com/screwyprof/delegator
 LOCAL_PACKAGES := "github.com/screwyprof/"
 
+# Target architecture for Docker builds
+# Architecture detection removed - letting Docker handle it natively
+
 # Version handling - CI can override with: make build VERSION=v1.2.3
 VERSION ?= $(shell \
 	TAG=$$(git describe --tags --exact-match HEAD 2>/dev/null); \
@@ -13,12 +16,16 @@ VERSION ?= $(shell \
 		echo "dev"; \
 	fi)
 
+DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
 # Build configuration
 GO_FILES := $(shell find . -name "*.go" | grep -v vendor)
 TEST_FLAGS := -race -parallel 4 -v
 PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
 # Coverage exclusion patterns (blacklist approach using grep)
-COVERAGE_EXCLUDE := -e "scraper/store/" -e "pkg/pgxdb/" -e "pkg/logger/" -e "cmd/"
+COVERAGE_EXCLUDE := -e "./migrator/" -e "testcfg/" -e "cmd/" -e "web/config/"
+# Pre-calculated comma-separated package list for -coverpkg
+COVERPKG_PACKAGES := $(shell go list $(PACKAGES) | tr '\n' ',' | sed 's/,$$//')
 
 # Colors for output
 OK_COLOR := \033[32;01m
@@ -32,9 +39,9 @@ SHELL := bash
 
 # Declare all phony targets upfront
 .PHONY: help deps tools clean all
-.PHONY: fmt lint check test coverage cover-html cover-svg
-.PHONY: build
-.PHONY: run-scraper run-scraper-demo run-web
+.PHONY: fmt lint check test coverage coverage-html coverage-svg
+.PHONY: build build-migrator
+.PHONY: run-migrator run-migrator-demo run-scraper run-scraper-demo run-web run
 
 help: ## Show this help screen
 	@echo -e "$(OK_COLOR)Delegator - Tezos Delegation Service$(NO_COLOR)\n"
@@ -76,26 +83,28 @@ lint: ## Run golangci-lint static analysis
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
 test: ## Run all tests (unit + acceptance) with race detection
-	@echo -e "$(OK_COLOR)--> Running all tests$(NO_COLOR)"
-	@go test $(TEST_FLAGS) $(PACKAGES)
+	@echo -e "$(OK_COLOR)--> Running all tests with acceptance$(NO_COLOR)"
 	@go test $(TEST_FLAGS) -tags=acceptance $(PACKAGES)
 
-coverage: ## Run all tests with coverage report
-	@echo -e "$(OK_COLOR)--> Running all tests with coverage$(NO_COLOR)"
+coverage: ## Run all tests with coverage using -coverpkg to include all packages
+	@echo -e "$(OK_COLOR)--> Running workspace coverage$(NO_COLOR)"
 	@rm -rf coverage && mkdir -p coverage
-	@go test $(TEST_FLAGS) -tags=acceptance -cover $(PACKAGES) -args -test.gocoverdir="$(PWD)/coverage" > /dev/null 2>&1
-	@go tool covdata textfmt -i=coverage -o coverage.tmp
-	@cat coverage.tmp | grep -v $(COVERAGE_EXCLUDE) > coverage.out && rm coverage.tmp
-	@echo -e "$(OK_COLOR)--> Project coverage:$(NO_COLOR)"
-	@go tool cover -func=coverage.out | grep "total:" || echo "No coverage data after filtering"
-	@echo -e "$(OK_COLOR)--> Detailed coverage:$(NO_COLOR)"
-	@go tool cover -func=coverage.out
+	@echo -e "$(OK_COLOR)--> Collecting coverage with explicit package list$(NO_COLOR)"
+	@go test -v -tags=acceptance -covermode=atomic -coverprofile=coverage/raw.out -coverpkg=$(COVERPKG_PACKAGES) $(PACKAGES) || true
+	@# Apply exclusions and show results
+	@if [ -f "coverage/raw.out" ]; then \
+		cat coverage/raw.out | grep -v $(COVERAGE_EXCLUDE) > coverage.out 2>/dev/null || cp coverage/raw.out coverage.out; \
+	else \
+		echo "mode: atomic" > coverage.out; \
+	fi
+	@echo -e "$(OK_COLOR)--> Coverage Summary:$(NO_COLOR)"
+	@go tool cover -func=coverage.out | grep "total:" || echo "No coverage data"
 
-cover-html: coverage ## Generate and show HTML coverage report
+coverage-html: coverage ## Generate and show HTML coverage report
 	@echo -e "$(OK_COLOR)--> Opening HTML coverage report$(NO_COLOR)"
 	@go tool cover -html=coverage.out
 
-cover-svg: coverage ## Generate SVG treemap visualization of coverage
+coverage-svg: coverage ## Generate SVG treemap visualization of coverage
 	@echo -e "$(OK_COLOR)--> Generating SVG treemap visualization$(NO_COLOR)"
 	@go tool go-cover-treemap -coverprofile coverage.out > "$(PWD)/coverage/coverage.svg"
 	@echo -e "$(OK_COLOR)--> SVG visualization: coverage/coverage.svg$(NO_COLOR)"
@@ -107,7 +116,14 @@ cover-svg: coverage ## Generate SVG treemap visualization of coverage
 # Build and Run
 #
 
+# Build migrator with version metadata and ldflags optimisations
+build-migrator: ## Build migrator binary with version metadata
+	@echo -e "$(OK_COLOR)--> Building migrator service (version: $(VERSION))$(NO_COLOR)"
+	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/migrator ./cmd/migrator
+
+# Build all services (migrator uses build-migrator)
 build: ## Build all services
+	@$(MAKE) build-migrator
 	@echo -e "$(OK_COLOR)--> Building scraper service$(NO_COLOR)"
 	@go build -o bin/scraper cmd/scraper/main.go
 	@echo -e "$(OK_COLOR)--> Building web API service$(NO_COLOR)"
@@ -127,17 +143,28 @@ clean: ## Clean build artifacts and generated files
 # Services
 #
 
-run-scraper: ## Run scraper service (production mode - full sync)
-	@echo -e "$(OK_COLOR)--> Starting scraper service (production mode)$(NO_COLOR)"
+run-migrator: ## Run database migrator (production mode - full sync)
+	@echo -e "$(OK_COLOR)--> Running database migrator (production mode)$(NO_COLOR)"
+	@go run cmd/migrator/main.go
+
+run-migrator-demo: ## Run database migrator (demo mode - recent data only)
+	@echo -e "$(OK_COLOR)--> Running database migrator (demo mode)$(NO_COLOR)"
+	@LOG_HUMAN_FRIENDLY=true MIGRATOR_INITIAL_CHECKPOINT=1939557726552064 go run cmd/migrator/main.go
+
+run-scraper: ## Run scraper service (assumes database is already set up)
+	@echo -e "$(OK_COLOR)--> Starting scraper service$(NO_COLOR)"
 	@go run cmd/scraper/main.go
 
-run-scraper-demo: ## Run scraper service (demo mode - recent data only)
+run-scraper-demo: ## Run scraper service (demo mode with smaller chunks)
 	@echo -e "$(OK_COLOR)--> Starting scraper service (demo mode)$(NO_COLOR)"
-	@SCRAPER_CHUNK_SIZE=1000 SCRAPER_INITIAL_CHECKPOINT=1939557726552064 go run cmd/scraper/main.go
+	@LOG_HUMAN_FRIENDLY=true SCRAPER_CHUNK_SIZE=1000 go run cmd/scraper/main.go
 
 run-web: ## Run web API service
 	@echo -e "$(OK_COLOR)--> Starting web API service$(NO_COLOR)"
 	@go run cmd/web/main.go
+
+run: ## Run docker-compose using .env.docker
+	@VERSION=$(VERSION) DATE=$(DATE) docker-compose --env-file .env.docker up --build
 
 #
 # Common Development Workflow

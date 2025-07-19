@@ -8,8 +8,9 @@ This document is a living dev-diary recording **how** and **why** we built Deleg
 
 - Go 1.24 (single version across the repo)
 - Nix flakes + direnv: `direnv allow && make run`
-- Single Go workspace: `scraper`, `web`, `pkg`
+- Single Go workspace: `scraper`, `web`, `pkg`, `migrator`
 - Makefile: `make help`, `make check`, `make run`
+- Configuration: `caarlos0/env` for environment variable parsing with validation
 
 ---
 
@@ -139,29 +140,171 @@ _Status_: ✅  Ready for the demo; Web API still pending.
 
 ---
 
-## 4 Database Configuration Strategy
+## 4 Web API Service (`web/`)
+
+### 4.1 Problem Statement
+Expose collected delegation data via HTTP endpoint `GET /xtz/delegations` with pagination and year filtering.
+
+### 4.2 Key Decisions
+| Area | Choice | Why |
+|------|--------|-----|
+| **Architecture** | **Clean separation**: `web/api/` (contracts), `web/handler/bind/` (HTTP parsing), `web/handler/` (orchestration) | Keeps API contracts pure; HTTP conversion logic separate from business logic |
+| **Pagination** | **GitHub-style** (`page`/`per_page` + Link headers) | Demo-friendly API, familiar to developers |
+| **Error handling** | **Sentinel errors** for validation failures | Better testing and error categorization |
+
+
+### 4.3 Environment Variables
+
+The web API is configured entirely via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEB_DATABASE_URL` | `postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable` | PostgreSQL connection string |
+| `WEB_HTTP_HOST` | `localhost` | Server bind address |
+| `WEB_HTTP_PORT` | `8080` | Server port |
+
+Handy recipes:
+```bash
+make run-web           # start web API service
+```
+
+### 4.4 Key Takeaway: Pagination Strategy
+
+**The Question**: How do you paginate through 760k+ records efficiently?
+
+**The Candidates**:
+- **GitHub-style**: `page=5&per_page=50` (familiar, bookmarkable)
+- **Google-style**: `page_token=CjkKEw...` (performant, consistent)
+- **RFC 5988**: All 4 rel types (`first`, `prev`, `next`, `last`)
+
+**The Decision Process**:
+
+1. **Started with user experience** - developers expect `page=5`, not cryptic tokens
+2. **Discovered the performance trap** - `rel="last"` requires COUNT(*) queries (35x slower!)
+3. **Found the sweet spot** - keep essential navigation (`prev`/`next`), drop the expensive bits
+
+**What we built**: `GET /xtz/delegations?page=5&per_page=50` → gets you there in 0.8ms
+
+**The Plot Twist**: Testing GitHub's actual API revealed they do hybrid pagination - accept friendly `page=5` requests but return optimized cursor tokens in Link headers. Engineering excellence hidden behind simple UX!
+
+```bash
+# GitHub's secret: page numbers IN, cursor tokens OUT
+curl -I "https://api.github.com/repos/octocat/Spoon-Knife/issues?page=5&per_page=2"
+# → Returns: ?page=6&per_page=2&after=Y3Vy... (cursor tokens for performance)
+```
+
+**Bottom line**: We chose honest simplicity over hidden complexity. Our OFFSET approach is transparent, predictable, and plenty fast for demo scale. Sometimes the best engineering decision is the one you can explain in 30 seconds. 🎯
+
+### 4.5 Current Status
+✅ PostgreSQL integration with pagination and year filtering  
+✅ GitHub-style pagination with Link headers  
+✅ Clean architecture with bind package for HTTP parsing  
+
+### 4.6 Database Optimization Decision
+**Problem**: Initial queries took 132ms (parallel seq scan + sort on 761k rows)
+**Solution**: Year column + dual indexes for different access patterns
+
+```sql
+CREATE INDEX idx_delegations_timestamp ON delegations (timestamp DESC);           -- Default pagination  
+CREATE INDEX idx_delegations_year_timestamp ON delegations (year, timestamp DESC); -- Year filtering
+```
+
+**Results**: Default pagination 0.074ms (1,792x faster), year filtering 0.331ms, deep pagination 0.858ms - validates GitHub-style approach.
+
+**Pagination Implementation**: Uses LIMIT n+1 technique for efficiency - requests pageSize+1 records to detect "has more" without expensive COUNT queries. Simplified Link headers (rel="prev" and rel="next" only) match GitHub's actual API behavior, providing 35x performance gain by omitting COUNT-based "last" links.
+
+_Status_: Database integration complete. API ready for demo.
+
+---
+
+## 5 Migrator – Fast Test Database Setup
+
+### 5.1 Goals
+- **Fast tests**: Use `pgtestdb` which utilises template databases for instant test setup
+- **Two test types**: Some tests need empty schema, others need realistic data
+- **Zero setup time**: Template databases eliminate migration overhead per test
+
+### 5.2 Implementation
+
+**Two migrator types for different test needs:**
+
+```go
+// Schema-only tests (scraper acceptance tests)
+testDB := migratortest.CreateScraperTestDatabase(t, "migrations", checkpoint)
+
+// Data-seeded tests (web API acceptance tests)  
+testDB := migratortest.CreateSeededTestDatabase(t, "migrations", demoCheckpoint, chunkSize, timeout)
+```
+
+**Key insight**: `pgtestdb` creates template databases once, then clones them instantly for each test. No repeated migrations.
+
+### 5.3 Why It Works
+- **Template database pattern**: Schema + seed data prepared once, cloned per test
+- **`SchemaMigrator`**: Just runs SQL migrations for clean schema tests
+- **`SeededMigrator`**: Runs migrations + uses scraper to populate realistic delegation data
+- **Fast parallel tests**: Each test gets isolated database in milliseconds
+
+### 5.4 Key Takeaways
+- Use `pgtestdb` for instant database cloning from templates
+- Separate migrators for schema-only vs data-seeded test scenarios
+- Seeded migrator actually runs the scraper to create realistic test data
+- Template approach makes parallel tests feasible and fast
+
+_Status_: ✅ Tests run in parallel with zero database setup overhead.
+
+---
+
+## 6 Test Configuration Strategy
+
+### 6.1 Key Decision: Environment-Configurable Tests  
+Created independent `testcfg` packages per module rather than hardcoded test constants.
+
+**Why**: Acceptance tests need to adapt between local development (fast iteration), CI environments (conservative timeouts), and debugging scenarios (more data, slower execution). Hardcoded values meant tests either ran slowly everywhere or failed in slower environments.
+
+### 6.2 Implementation Approach
+Each module owns its test configuration semantics via dedicated `testcfg` packages. Used the same `caarlos0/env` pattern as production configurations for consistency.
+
+**Key insight**: Service independence extends to test configuration—scraper tests care about chunk sizes and poll intervals, web tests care about seed data timeouts, tzkt client tests care about API limits.
+
+_Status_: ✅ Tests adapt to any environment without code changes.
+
+---
+
+## 7 Database Configuration Strategy
 
 Dev: tmpfs Postgres for quick iterations.  
 Prod: standard Postgres with persistence, SSL and backups.
 
 ---
 
-## 6 Testing & Coverage Strategy
+## 8 HTTP Error Handling Strategy
 
-• Unit tests for domain logic.  
-• Acceptance test hits real Tzkt API + Postgres.  
-• `make test` runs everything with race detector and parallelism.  
-Coverage target: ≥80 % (store integration covered by acceptance test).
+### 8.1 Key Decision: Error Safety vs Internal Details
+**Problem**: API errors expose too much (500 errors leak internal details) or too little (generic messages aren't useful).
+
+**Solution**: HTTPError interface separating user-safe messages from internal causes:
+- Client errors (4xx): expose full details - validation errors are safe
+- Server errors (5xx): hide internal details - "Internal Server Error" only  
+- Logging gets full details via `Cause()` for debugging
+
+### 8.2 Request Logging Decision  
+**Problem**: No visibility into API request patterns, performance, or errors.
+
+**Solution**: Middleware captures request/response lifecycle:
+- Method, URI, status code, duration, byte counts
+- Error details (from error context) for debugging
+- Standard structured logging with slog
+
+**Why not a framework**: Keep dependencies minimal, stdlib sufficient for current scope.
 
 ---
 
-## 7 Future Roadmap
-1. **Web API** – expose `GET /xtz/delegations` (will live in `web/`).
-2. **Structured logging & tracing** – plumb `slog` with request IDs once HTTP entry points appear.
-3. **Throttling middleware** – optional, only if production back-fill shows 429s.
+## 9 Future Roadmap
+1. **Structured logging & tracing** – plumb `slog` with request IDs for better observability
+2. **Throttling middleware for scraper** – optional, only if production back-fill shows 429s
 
 ---
 
 That's the story so far—trimmed for length but (hopefully) not for laughs.
 
-**Current Status**: the scraper chugs through ~760 k delegations in ~15 s. Next up: the Web API.
+**Current Status**: Complete end-to-end system. Scraper processes ~760k delegations in ~15s with year column optimization. Web API serves real data via `GET /xtz/delegations` with GitHub-style pagination and year filtering. Database optimized with composite index for efficient queries.

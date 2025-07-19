@@ -13,6 +13,7 @@ type Delegation struct {
 	Amount    int64     `db:"amount"`
 	Delegator string    `db:"delegator"`
 	Level     int64     `db:"level"`
+	Year      int       `db:"year"`
 	// created_at is handled by database DEFAULT CURRENT_TIMESTAMP
 }
 
@@ -27,6 +28,7 @@ func ScraperDelegationsToRows(delegations []scraper.Delegation) [][]any {
 			d.Amount,
 			d.Delegator,
 			d.Level,
+			d.Timestamp.Year(),
 		}
 	}
 

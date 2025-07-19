@@ -22,7 +22,6 @@ services:
       # - Add proper backup and monitoring
       - type: tmpfs
         target: /var/lib/postgresql/data/
-      #- ./migrations:/docker-entrypoint-initdb.d
     command:
       - "postgres"
       - "-c"
@@ -42,5 +41,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrator
+      args:
+        VERSION: ${VERSION:-dev}
+        DATE: ${DATE:-unknown}
+    environment:
+      MIGRATOR_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
+      MIGRATOR_MIGRATIONS_DIR: /migrations
+      MIGRATOR_INITIAL_CHECKPOINT: ${MIGRATOR_INITIAL_CHECKPOINT:-0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_HUMAN_FRIENDLY: ${LOG_HUMAN_FRIENDLY:-true}
+      MIGRATOR_OPERATION_TIMEOUT: ${MIGRATOR_OPERATION_TIMEOUT:-30s}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
  

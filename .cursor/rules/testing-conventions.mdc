@@ -155,7 +155,7 @@ assertExpectedBehavior(t, result)
 ## Test Execution
 - Always run with the race detector and coverage:  
   `go test ./... -race -covermode=atomic -coverprofile=coverage.out`  
-- Fail CI if overall coverage falls below **80 %**  
+- Fail CI if overall coverage falls below **80%**  
 - Upload coverage reports (e.g., Codecov) for visibility
 
 ## Behaviour Specification Style ("It" phrasing)

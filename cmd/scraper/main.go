@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/screwyprof/delegator/cmd/scraper/config"
 	"github.com/screwyprof/delegator/pkg/logger"
 	"github.com/screwyprof/delegator/pkg/pgxdb"
 	"github.com/screwyprof/delegator/pkg/tzkt"
 	"github.com/screwyprof/delegator/scraper"
+	"github.com/screwyprof/delegator/scraper/config"
 	"github.com/screwyprof/delegator/scraper/store/pgxstore"
 )
 
@@ -39,18 +39,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Apply migrations
-	log.InfoContext(ctx, "Applying database migrations")
-	if err := pgxdb.ApplyMigrations(db, "./migrations"); err != nil {
-		log.ErrorContext(ctx, "Failed to apply migrations", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	// Initialize checkpoint
-	if err := pgxdb.InittialiseCheckpointIfNotSet(ctx, db, cfg.InitialCheckpoint); err != nil {
-		log.ErrorContext(ctx, "Failed to initialize checkpoint", slog.Any("error", err))
-		os.Exit(1)
-	}
+	// Database setup is now handled by the migrator service
 
 	// Initialize store
 	store, storeCloser := pgxstore.New(db)
@@ -71,7 +60,6 @@ func main() {
 	// Start service
 	log.InfoContext(ctx, "Starting delegation scraper service",
 		slog.Uint64("chunkSize", cfg.ChunkSize),
-		slog.Uint64("initialCheckpoint", cfg.InitialCheckpoint),
 	)
 	events, done := scraperService.Start(ctx)
 

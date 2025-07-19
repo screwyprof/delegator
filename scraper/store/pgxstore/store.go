@@ -73,7 +73,8 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 			timestamp TIMESTAMP WITH TIME ZONE,
 			amount BIGINT,
 			delegator TEXT,
-			level BIGINT
+			level BIGINT,
+			year INTEGER
 		) ON COMMIT DROP
 	`)
 	if err != nil {
@@ -84,7 +85,7 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	_, err = tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"temp_delegations"},
-		[]string{"id", "timestamp", "amount", "delegator", "level"},
+		[]string{"id", "timestamp", "amount", "delegator", "level", "year"},
 		pgx.CopyFromRows(rows),
 	)
 	if err != nil {
@@ -94,8 +95,8 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	// Insert from temporary table to main table with conflict resolution
 	// created_at will be populated by database DEFAULT CURRENT_TIMESTAMP
 	_, err = tx.Exec(ctx, `
-		INSERT INTO delegations (id, timestamp, amount, delegator, level)
-		SELECT id, timestamp, amount, delegator, level
+		INSERT INTO delegations (id, timestamp, amount, delegator, level, year)
+		SELECT id, timestamp, amount, delegator, level, year
 		FROM temp_delegations
 		ON CONFLICT (id) DO NOTHING
 	`)
