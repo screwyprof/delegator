@@ -45,8 +45,8 @@ SHELL := bash
 .PHONY: fmt lint check test coverage coverage-html coverage-svg
 .PHONY: sync-modules update-modules verify-modules
 .PHONY: build build-migrator build-scraper build-web show-version
-.PHONY: run run-migrator run-scraper run-scraper-demo run-web
-.PHONY: run-demo run-migrator-demo run-scraper-demo
+.PHONY: run run-migrator run-scraper run-web
+.PHONY: run-demo
 
 help: ## Show this help screen
 	@echo -e "$(OK_COLOR)Delegator - Tezos Delegation Service$(NO_COLOR)\n"
@@ -60,12 +60,16 @@ help: ## Show this help screen
 # Development Tools
 #
 
+TOOLS := mvdan.cc/gofumpt@latest \
+	github.com/daixiang0/gci@latest \
+	github.com/golangci/golangci-lint/cmd/golangci-lint@latest \
+	github.com/nikolaydubina/go-cover-treemap@latest
+
 deps: ## Install development tools using Go 1.24 tool management
 	@echo -e "$(OK_COLOR)--> Installing development tools$(NO_COLOR)"
-	@go get -tool mvdan.cc/gofumpt@latest && \
-	 go get -tool github.com/daixiang0/gci@latest && \
-	 go get -tool github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
-	 go get -tool github.com/nikolaydubina/go-cover-treemap@latest
+	@for t in $(TOOLS); do \
+	  go get -tool $$t ; \
+	done
 
 tools: ## List all installed development tools
 	@echo -e "$(OK_COLOR)--> Installed development tools:$(NO_COLOR)"
@@ -140,26 +144,14 @@ coverage-svg: coverage ## Generate SVG treemap visualization of coverage
 # Build and Run
 #
 
-# Build migrator with version metadata and ldflags optimisations
-build-migrator: ## Build migrator binary with version metadata
-	@echo -e "$(OK_COLOR)--> Building migrator service (version: $(VERSION))$(NO_COLOR)"
-	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/migrator ./cmd/migrator
+# Generic build pattern (bin/<service>)
+bin/%: cmd/%/main.go
+	@mkdir -p $(dir $@)
+	@echo -e "$(OK_COLOR)--> Building $* service (version: $(VERSION))$(NO_COLOR)"
+	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o $@ ./cmd/$*
 
-# Build scraper with version metadata
-build-scraper: ## Build scraper binary with version metadata
-	@echo -e "$(OK_COLOR)--> Building scraper service (version: $(VERSION))$(NO_COLOR)"
-	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/scraper ./cmd/scraper
-
-# Build web with version metadata
-build-web: ## Build web API binary with version metadata
-	@echo -e "$(OK_COLOR)--> Building web API service (version: $(VERSION))$(NO_COLOR)"
-	@go build -trimpath -ldflags "-s -w -X 'main.version=$(VERSION)' -X 'main.date=$(DATE)'" -o bin/web ./cmd/web
-
-# Build all services (migrator & scraper)
-build: ## Build all services
-	@$(MAKE) build-migrator
-	@$(MAKE) build-scraper
-	@$(MAKE) build-web
+build: bin/migrator bin/scraper bin/web ## Build all services
+	@echo -e "$(OK_COLOR)--> All services built$(NO_COLOR)"
 
 #
 # Maintenance
@@ -174,32 +166,24 @@ clean: ## Clean build artifacts and generated files
 #
 # Services
 #
+run: ## Run docker-compose in "production" mode
+	@VERSION=$(VERSION) DATE=$(DATE) docker-compose up --build
+
+run-demo: ## Launch docker-compose in demo mode (.env.demo overrides)
+	@VERSION=$(VERSION) DATE=$(DATE) docker compose --env-file env.demo up --build
 
 run-migrator: ## Run database migrator (production mode - full sync)
 	@echo -e "$(OK_COLOR)--> Running database migrator (production mode)$(NO_COLOR)"
 	@go run cmd/migrator/main.go
 
-run-migrator-demo: ## Run database migrator (demo mode - recent data only)
-	@echo -e "$(OK_COLOR)--> Running database migrator (demo mode)$(NO_COLOR)"
-	@LOG_HUMAN_FRIENDLY=true MIGRATOR_INITIAL_CHECKPOINT=1939557726552064 go run cmd/migrator/main.go
-
 run-scraper: ## Run scraper service (assumes database is already set up)
 	@echo -e "$(OK_COLOR)--> Starting scraper service$(NO_COLOR)"
 	@go run cmd/scraper/main.go
-
-run-scraper-demo: ## Run scraper service (demo mode with smaller chunks)
-	@echo -e "$(OK_COLOR)--> Starting scraper service (demo mode)$(NO_COLOR)"
-	@LOG_HUMAN_FRIENDLY=true SCRAPER_CHUNK_SIZE=1000 go run cmd/scraper/main.go
 
 run-web: ## Run web API service
 	@echo -e "$(OK_COLOR)--> Starting web API service$(NO_COLOR)"
 	@go run cmd/web/main.go
 
-run: ## Run docker-compose in "production" mode
-	@VERSION=$(VERSION) DATE=$(DATE) docker-compose up --build
-
-run-demo: ## Run docker-compose in "demo" mode with limited data subset
-	@VERSION=$(VERSION) DATE=$(DATE) docker-compose --env-file .env.dev up --build
 
 #
 # Common Development Workflow

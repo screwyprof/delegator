@@ -101,5 +101,3 @@ services:
       scraper:
         condition: service_started
     restart: unless-stopped
-
- 
