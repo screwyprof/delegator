@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "jnoortheen.nix-ide",
+        "mkhl.direnv",
+        "golang.go",
+        "usernamehw.errorlens",
+        "ryanluker.vscode-coverage-gutters",
+        "premparihar.gotestexplorer",
+    ]
+}

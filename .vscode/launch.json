@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug tests (no cgo werror)",
+      "type": "go",
+      "request": "launch",
+      "program": "${workspaceFolder}",
+      "env": {
+        "CGO_CFLAGS": "-Wno-error",
+        "CGO_CPPFLAGS": "-Wno-error"
+      }
+    }
+  ]
+}

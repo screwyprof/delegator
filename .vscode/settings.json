@@ -1,0 +1,72 @@
+{
+  // Go-specific Settings
+  "[go]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    },
+    "editor.formatOnSave": true,
+    "editor.snippetSuggestions": "none"
+  },
+  "go.diagnostic.vulncheck": "Off",
+  "go.coverOnSave": true,
+  "go.coverOnSingleTest": true,
+  "go.coverOnSingleTestFile": true,
+  "go.coverageDecorator": {
+    "coveredBorderColor": "rgba(64,128,128,0.4)",
+    "coveredHighlightColor": "rgba(64,128,128,0.2)",
+    "type": "highlight",
+    "uncoveredBorderColor": "rgba(128,64,64,0.4)",
+    "uncoveredHighlightColor": "rgba(128,64,64,0.2)"
+  },
+  "go.delveConfig": {
+    "debugAdapter": "dlv-dap",
+    "showGlobalVariables": true
+  },
+  "go.lintTool": "golangci-lint",
+  "go.testFlags": [
+    "-v"
+  ],
+  "go.testOnSave": false,
+  "go.toolsManagement.autoUpdate": false,
+  "go.useLanguageServer": true,
+
+  // Editor Settings
+  "editor.fontFamily": "'MesloLGMDZ Nerd Font', 'JetBrainsMono NF', 'FiraCode Nerd Font', monospace",
+  "editor.fontLigatures": true,
+  "editor.fontSize": 20,
+  "editor.inlayHints.enabled": "onUnlessPressed",
+  "editor.inlineSuggest.enabled": true,
+  "editor.lineHeight": 30,
+
+  // Terminal Settings
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.fontFamily": "'MesloLGMDZ Nerd Font', 'JetBrainsMono NF', 'FiraCode Nerd Font', monospace",
+  "terminal.integrated.fontSize": 20,
+  "terminal.integrated.profiles.osx": {
+    "zsh": {
+      "path": "zsh",
+      "args": ["-l"]
+    }
+  },
+
+  // Testing Settings
+  "testing.coverageToolbarEnabled": true,
+  "testing.showCoverageInExplorer": true,
+
+  "coverage-gutters.coverageFileNames": [
+    "coverage.out",
+    "coverage.html"
+  ],
+  "coverage-gutters.showGutterCoverage": true,
+  "coverage-gutters.showLineCoverage": true,
+  "coverage-gutters.showRulerCoverage": true,
+  "coverage-gutters.highlightdark": "rgba(64,128,64,0.4)",
+
+  // Development Environment
+  "direnv.restart.automatic": true,
+
+  // File Associations
+  "files.associations": {
+    "*.go": "go"
+  }
+}
