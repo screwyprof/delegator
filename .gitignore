@@ -25,7 +25,6 @@ go.work
 
 
 # IDE and editor files
-.vscode/
 .idea/
 *.swp
 *.swo
