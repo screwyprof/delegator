@@ -64,7 +64,7 @@ func createTestDatabaseConfig() pgtestdb.Config {
 		DriverName: "pgx",
 		User:       "delegator",
 		Password:   "delegator",
-		Host:       "localhost",
+		Host:       "postgres",
 		Port:       "5432",
 		Options:    "sslmode=disable",
 	}

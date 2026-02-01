@@ -17,15 +17,15 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
 ## 🚀 Quick Start
 💡 **Tip:** Run `make help` to see all available commands and targets.
 ### Full Data Sync
-1. **Start all services** (migrator, scraper, web API, PostgreSQL): `make run` or `make run-demo`  for a lightweight demo dataset 
+1. **Start all services** (migrator, scraper, web API, PostgreSQL): `make run` or `make run-demo`  for a lightweight demo dataset 
 2. Watch the scraper in action: `docker compose logs -f scraper`
 3. **Query the API:**
-   * **Happy path:** `curl "localhost:8080/xtz/delegations?page=2&per_page=10&year=2025"`
-   * **Error example:** `curl "localhost:8080/xtz/delegations?page=1&per_page=10&year=2100"`
+   * **Happy path:** `curl "localhost:8080/xtz/delegations?page=2&per_page=10&year=2025"`
+   * **Error example:** `curl "localhost:8080/xtz/delegations?page=1&per_page=10&year=2100"`
 
 ## 🧪 Running Tests & Quality Gates
-1. **Install dev tools** (first-time only): make deps
-2. **Format, lint, and run tests**: make check
+1. **Install dev tools** (first-time only): `make deps`
+2. **Format, lint, and run tests**: `make check`
 3. **View coverage**:
    * Text: `make coverage`
    * HTML: `make coverage-html` 

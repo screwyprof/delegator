@@ -17,9 +17,14 @@
           buildInputs = with pkgs; [
             go_1_24
             gopls
+            golangci-lint
+            go-outline
+            delve
             git
             gnumake
           ];
+
+          hardeningDisable = [ "all" ];
 
           shellHook = ''
             echo "🚀 Exchange Development Environment"
