@@ -45,6 +45,7 @@ result-*
 
 # direnv
 .direnv/
+.envrc
 
-# Air live reload
-tmp/ 
+# project binaries
+.local/bin/
