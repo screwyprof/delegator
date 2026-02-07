@@ -18,7 +18,6 @@ services:
       # Cache for nix packages
       - nix-store:/nix
       - direnv-data:/home/vscode/.local/share/direnv
-
     # Uncomment the next four lines if you will use a ptrace-based debugger like C++, Go, and Rust.
     cap_add:
       - SYS_PTRACE
@@ -28,7 +27,6 @@ services:
     # Overrides default command so things don't shut down after the process ends.
     #entrypoint: ["/nix-entrypoint.sh"]
     #command: sleep infinity
- 
 volumes:
   nix-store:
   direnv-data:
