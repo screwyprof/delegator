@@ -61,7 +61,6 @@
         		"golang.go",
 				"usernamehw.errorlens",
 				"ryanluker.vscode-coverage-gutters",
-				"premparihar.gotestexplorer",
 				"ms-vscode.makefile-tools"
       		],
       		"settings": {

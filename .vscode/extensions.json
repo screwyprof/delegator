@@ -5,6 +5,5 @@
         "golang.go",
         "usernamehw.errorlens",
         "ryanluker.vscode-coverage-gutters",
-        "premparihar.gotestexplorer",
     ]
 }

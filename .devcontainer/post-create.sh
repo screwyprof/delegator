@@ -2,6 +2,7 @@
 
 # Fix ownership of the home directory
 sudo chown -R vscode:vscode /home/vscode/
+git config --global --add safe.directory /workspaces/
 
 echo "Updating shell configurations..."
 
