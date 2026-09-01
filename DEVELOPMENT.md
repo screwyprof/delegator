@@ -227,6 +227,14 @@ Why bother? Parallel tests now finish in **under three seconds** instead of minu
 Environment-configurable tests keep the codebase stateless, the suite lightning-fast, **and they help us sit comfortably at ~92% statement coverage** (see `make coverage`).
 For the visual crowd, `make coverage-svg` pops up an interactive treemap so you can **see** which files need love at a glance.
 
+### 6.3 Running Acceptance Tests: localhost vs. devcontainer
+Acceptance tests (build tag `acceptance`) and `pgtestdb` both need a real Postgres reachable over the network. The only knob that differs between environments is **hostname**, driven by `SCRAPER_TEST_DATABASE_URL` (defaults to `localhost:5432`, same convention as `SCRAPER_DATABASE_URL`/`WEB_DATABASE_URL`/`MIGRATOR_DATABASE_URL`):
+
+* **On the bare host** (`direnv allow && make check`): `docker compose up -d postgres` publishes `5432` to the host, so the `localhost` default just works.
+* **Inside the devcontainer**: the `gopher-dev` service is its own container on the Compose network, so `localhost` there means *itself*, not `postgres`. `.devcontainer/docker-compose.yml` overrides every `*_DATABASE_URL` (including `SCRAPER_TEST_DATABASE_URL`) to `postgres:5432`, which resolves via Compose's built-in DNS — the same mechanism `docker-compose.yaml` already uses for the `migrator`/`scraper`/`web` service containers.
+
+`migrator/migratortest.createTestDatabaseConfig` parses `SCRAPER_TEST_DATABASE_URL` (rather than hard-coding `localhost`) so `pgtestdb` picks up whichever host is correct for where the tests are running — no separate configuration or manual overrides needed in either environment. Run acceptance tests with `make test`/`make check`, or directly via `go test -tags=acceptance ./...` per module.
+
 ---
 
 ## 7 Where We’d Go Next (But Stopped Ourselves)

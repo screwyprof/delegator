@@ -25,11 +25,14 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
 
 ## 🧪 Running Tests & Quality Gates
 1. **Install dev tools** (first-time only): `make deps`
-2. **Format, lint, and run tests**: `make check`
-3. **View coverage**:
+2. **Start Postgres** (acceptance tests need a real database): `docker compose up -d postgres`
+3. **Format, lint, and run tests**: `make check`
+4. **View coverage**:
    * Text: `make coverage`
    * HTML: `make coverage-html` 
    * Visual treemap: `make coverage-svg`
+
+Acceptance tests connect via `SCRAPER_TEST_DATABASE_URL` (default: `localhost:5432`, matching a host-run `docker compose up -d postgres`). Inside the devcontainer this is pre-wired to the `postgres` service name instead — see [DEVELOPMENT.md §6.3](DEVELOPMENT.md#63-running-acceptance-tests-localhost-vs-devcontainer) for details.
 
 ## 📝 Log Samples
 A sneak peek at the logs tail:  `docker compose logs -f <service>`:

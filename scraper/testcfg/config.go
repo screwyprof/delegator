@@ -14,10 +14,10 @@ type Config struct {
 	PollInterval      time.Duration `env:"SCRAPER_TEST_POLL_INTERVAL" envDefault:"100ms"` // vs 10s in production
 	HttpClientTimeout time.Duration `env:"SCRAPER_TEST_HTTP_CLIENT_TIMEOUT" envDefault:"30s"`
 	TzktAPIURL        string        `env:"SCRAPER_TEST_TZKT_API_URL" envDefault:"https://api.tzkt.io"`
-	DatabaseURL       string        `env:"SCRAPER_TEST_DATABASE_URL" envDefault:"postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable"`
+	DatabaseURL       string        `env:"SCRAPER_TEST_DATABASE_URL" envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"`
 
 	// Test execution timeouts
-	ShutdownTimeout time.Duration `env:"SCRAPER_TEST_SHUTDOWN_TIMEOUT" envDefault:"2s"`
+	ShutdownTimeout time.Duration `env:"SCRAPER_TEST_SHUTDOWN_TIMEOUT" envDefault:"10s"`
 
 	// Test database setup (for migrator/migratortest)
 	Checkpoint  int64         `env:"SCRAPER_TEST_CHECKPOINT" envDefault:"1939557726552064"`

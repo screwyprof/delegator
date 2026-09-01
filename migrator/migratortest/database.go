@@ -1,6 +1,8 @@
 package migratortest
 
 import (
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -43,7 +45,7 @@ func CreateSeededTestDatabase(t *testing.T, migrationsDir string) *pgxpool.Pool 
 func createTestDatabaseWithMigrator(t *testing.T, migratorInstance pgtestdb.Migrator) *pgxpool.Pool {
 	t.Helper()
 
-	config := createTestDatabaseConfig()
+	config := createTestDatabaseConfig(t)
 
 	// Create test database and get its config
 	dbConfig := pgtestdb.Custom(t, config, migratorInstance)
@@ -58,14 +60,24 @@ func createTestDatabaseWithMigrator(t *testing.T, migratorInstance pgtestdb.Migr
 	return pool
 }
 
-// createTestDatabaseConfig creates the standard pgtestdb configuration for delegator tests
-func createTestDatabaseConfig() pgtestdb.Config {
+// createTestDatabaseConfig builds the pgtestdb connection config from SCRAPER_TEST_DATABASE_URL,
+// so the same test suite can target a local Postgres (default: localhost) or the "postgres"
+// Docker Compose service (e.g. when running inside the devcontainer) without code changes.
+func createTestDatabaseConfig(t *testing.T) pgtestdb.Config {
+	t.Helper()
+
+	dsn, err := url.Parse(testcfg.New().DatabaseURL)
+	require.NoError(t, err)
+
+	password, _ := dsn.User.Password()
+
 	return pgtestdb.Config{
 		DriverName: "pgx",
-		User:       "delegator",
-		Password:   "delegator",
-		Host:       "localhost", // TODO: (postgress when run in devcontainer)
-		Port:       "5432",
-		Options:    "sslmode=disable",
+		User:       dsn.User.Username(),
+		Password:   password,
+		Host:       dsn.Hostname(),
+		Port:       dsn.Port(),
+		Database:   strings.TrimPrefix(dsn.Path, "/"),
+		Options:    dsn.RawQuery,
 	}
 }
