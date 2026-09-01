@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"github.com/caarlos0/env/v11"
+	env "github.com/caarlos0/env/v11"
 )
 
 // Config holds all configuration loaded from environment variables

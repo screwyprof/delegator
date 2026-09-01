@@ -11,6 +11,8 @@ services:
     #   dockerfile: .devcontainer/Dockerfile
     # https://github.com/cachix/devenv/blob/main/containers/devcontainer/Dockerfile
     image: ghcr.io/cachix/devenv/devcontainer
+    # init: true  # tini as PID 1 → reaps orphaned setup processes (no <defunct> zombie pileup)
+    userns_mode: "keep-id"  # podman-only; no-op for docker+gVisor (rootful maps vscode:1000 -> dev:1000)
     volumes:
       # Update this to wherever you want VS Code to mount the folder of your project
       - .:/workspaces:cached

@@ -1,7 +1,7 @@
 package testcfg
 
 import (
-	"github.com/caarlos0/env/v11"
+	env "github.com/caarlos0/env/v11"
 )
 
 // Config holds test-specific configuration for web API acceptance tests

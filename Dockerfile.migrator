@@ -3,7 +3,7 @@
 ############################
 # 1. Build Stage           #
 ############################
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # Install git for fetching private / VCS-hosted modules
 RUN apk add --no-cache git
@@ -21,7 +21,8 @@ COPY scraper/go.mod   ./scraper/go.mod
 COPY web/go.mod       ./web/go.mod
 
 # Download dependencies (cached if go.mod/go.sum unchanged)
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # --- copy the rest of the source code ---
 COPY . .

@@ -15,7 +15,7 @@
         let pkgs = nixpkgs.legacyPackages.${system};
         in pkgs.mkShell {
           buildInputs = with pkgs; [
-            go_1_24
+            go_1_27
             gopls
             golangci-lint
             delve
