@@ -23,7 +23,7 @@ GO_FILES := $(shell find . -name "*.go" | grep -v vendor)
 TEST_FLAGS := -race -parallel 4 -v
 PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
 # Coverage exclusion patterns (blacklist approach using grep)
-COVERAGE_EXCLUDE := -e "./migrator/" -e "testcfg/" -e "cmd/" -e "web/config/"
+COVERAGE_EXCLUDE := -e "./migrator/" -e "testcfg/" -e "cmd/" -e "web/config/" -e "web/internal/seedtestdb/"
 # Pre-calculated comma-separated package list for -coverpkg
 COVERPKG_PACKAGES := $(shell go list $(PACKAGES) | tr '\n' ',' | sed 's/,$$//')
 
