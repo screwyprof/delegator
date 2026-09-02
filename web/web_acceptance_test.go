@@ -19,9 +19,10 @@ import (
 	"github.com/screwyprof/delegator/pkg/logger"
 	"github.com/screwyprof/delegator/pkg/pgxdb"
 	"github.com/screwyprof/delegator/web/api"
+	"github.com/screwyprof/delegator/web/config"
 	"github.com/screwyprof/delegator/web/handler"
+	"github.com/screwyprof/delegator/web/internal/seedtestdb"
 	"github.com/screwyprof/delegator/web/store/pgxstore"
-	"github.com/screwyprof/delegator/web/testcfg"
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
@@ -31,7 +32,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 
 	// Create ONE shared read-only test database for all subtests
 	// Since we never modify data, this can be safely shared
-	sharedTestDB := migratortest.CreateSeededTestDatabase(t, "../migrator/migrations")
+	sharedTestDB := seedtestdb.CreateSeededTestDatabase(t, "../migrator/migrations")
 	t.Cleanup(func() {
 		sharedTestDB.Close()
 	})
@@ -450,11 +451,14 @@ func createTestServerWithIsolatedConnection(t *testing.T, dbConnString string) (
 	tezosHandler := handler.NewTezosGetDelegations(store)
 	tezosHandler.AddRoutes(mux)
 
-	// Add logging middleware for SUT observability (like production)
-	testCfg := testcfg.New()
+	// Add logging middleware for SUT observability (like production) — same env vars
+	// production uses (LOG_LEVEL/LOG_HUMAN_FRIENDLY), no test-only copy. Note this means
+	// test output defaults to JSON (LogHumanFriendly's production-safe default is false);
+	// export LOG_HUMAN_FRIENDLY=true locally for readable logs while debugging a failure.
+	cfg := config.New()
 	log := logger.NewFromConfig(logger.Config{
-		LogLevel:         testCfg.LogLevel,
-		LogHumanFriendly: testCfg.LogHumanFriendly,
+		LogLevel:         cfg.LogLevel,
+		LogHumanFriendly: cfg.LogHumanFriendly,
 	})
 	loggedMux := logger.NewMiddleware(log)(mux)
 

@@ -62,7 +62,7 @@ help: ## Show this help screen
 
 TOOLS := mvdan.cc/gofumpt@latest \
 	github.com/daixiang0/gci@latest \
-	github.com/golangci/golangci-lint/cmd/golangci-lint@latest \
+	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
 	github.com/nikolaydubina/go-cover-treemap@latest
 
 deps: ## Install development tools using Go 1.24 tool management

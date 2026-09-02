@@ -5,30 +5,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
-	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/peterldowns/pgtestdb/migrators/sqlmigrator"
 	migrate "github.com/rubenv/sql-migrate"
-
-	"github.com/screwyprof/delegator/pkg/pgxdb"
-	"github.com/screwyprof/delegator/pkg/tzkt"
-	"github.com/screwyprof/delegator/scraper"
-	"github.com/screwyprof/delegator/scraper/config"
-	"github.com/screwyprof/delegator/scraper/store/pgxstore"
 )
 
-// Migration constants
-const (
-	migrationsTableName = "schema_migrations"
-	schemaHashPrefix    = "schema_only_"
-	seededHashPrefix    = "seeded_demo_"
-)
+// migrationsTableName is the sql-migrate bookkeeping table name.
+const migrationsTableName = "schema_migrations"
+
+const schemaHashPrefix = "schema_only_"
 
 // SQL queries
 const (
@@ -63,134 +51,32 @@ func NewSchemaMigrator(migrationsDir string) *SchemaMigrator {
 }
 
 func (m *SchemaMigrator) Hash() (string, error) {
-	source := &migrate.FileMigrationSource{Dir: m.migrationsDir}
-	migrationSet := &migrate.MigrationSet{TableName: migrationsTableName}
-	sqlMigrator := sqlmigrator.New(source, migrationSet)
-
-	baseHash, err := sqlMigrator.Hash()
+	baseHash, err := MigrationsHash(m.migrationsDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to calculate migration hash for %s: %w", m.migrationsDir, err)
+		return "", err
 	}
 
 	return schemaHashPrefix + baseHash, nil
 }
 
-func (m *SchemaMigrator) Migrate(ctx context.Context, db *sql.DB, conf pgtestdb.Config) error {
-	return applyMigrations(db, m.migrationsDir)
-}
-
-// SeededMigrator applies schema migrations + seeds with demo delegation data
-// Used for web API tests that need realistic data to test against
-type SeededMigrator struct {
-	migrationsDir  string
-	demoCheckpoint int64
-	chunkSize      uint64
-	seedTimeout    time.Duration
-}
-
-// NewSeededMigrator creates a migrator that applies schema + seeds demo data
-func NewSeededMigrator(migrationsDir string, demoCheckpoint int64, chunkSize uint64, seedTimeout time.Duration) *SeededMigrator {
-	return &SeededMigrator{
-		migrationsDir:  migrationsDir,
-		demoCheckpoint: demoCheckpoint,
-		chunkSize:      chunkSize,
-		seedTimeout:    seedTimeout,
-	}
-}
-
-func (m *SeededMigrator) Hash() (string, error) {
-	source := &migrate.FileMigrationSource{Dir: m.migrationsDir}
+// MigrationsHash returns the sql-migrate hash for the migrations in migrationsDir, with no
+// prefix. Exported so other pgtestdb.Migrator implementations that need their own composite
+// hash (see web/internal/seedtestdb) can build on the same base instead of recomputing it.
+func MigrationsHash(migrationsDir string) (string, error) {
+	source := &migrate.FileMigrationSource{Dir: migrationsDir}
 	migrationSet := &migrate.MigrationSet{TableName: migrationsTableName}
 	sqlMigrator := sqlmigrator.New(source, migrationSet)
 
 	baseHash, err := sqlMigrator.Hash()
 	if err != nil {
-		return "", fmt.Errorf("failed to calculate migration hash for %s: %w", m.migrationsDir, err)
+		return "", fmt.Errorf("failed to calculate migration hash for %s: %w", migrationsDir, err)
 	}
 
-	return seededHashPrefix + baseHash + "_" + strconv.FormatInt(m.demoCheckpoint, 10) + "_" + strconv.FormatUint(m.chunkSize, 10), nil
+	return baseHash, nil
 }
 
-func (m *SeededMigrator) Migrate(ctx context.Context, db *sql.DB, conf pgtestdb.Config) error {
-	// Apply schema migrations using common function
-	if err := applyMigrations(db, m.migrationsDir); err != nil {
-		return err
-	}
-
-	// Then seed with demo data using the scraper
-	return m.seedDemoData(ctx, conf.URL())
-}
-
-// seedDemoData seeds the template database with demo delegation data
-func (m *SeededMigrator) seedDemoData(ctx context.Context, dbURL string) error {
-	slog.InfoContext(ctx, "🌱 Seeding demo database with delegation data",
-		"checkpoint", m.demoCheckpoint,
-		"chunkSize", m.chunkSize,
-		"timeout", m.seedTimeout)
-
-	// Create context with timeout for seeding
-	seedCtx, cancel := context.WithTimeout(ctx, m.seedTimeout)
-	defer cancel()
-
-	// Create database connection for seeding
-	pool, err := pgxdb.NewConnection(seedCtx, dbURL)
-	if err != nil {
-		return err
-	}
-	defer pool.Close()
-
-	// Set the demo checkpoint for seeding (always overwrite for consistent seeding)
-	if err := SetCheckpoint(seedCtx, pool, uint64(m.demoCheckpoint)); err != nil {
-		return err
-	}
-
-	// Create scraper components for seeding
-	store, storeCloser := pgxstore.New(pool)
-	defer storeCloser()
-
-	cfg := config.New()
-	cfg.ChunkSize = m.chunkSize // Use the configured chunk size, not default
-
-	httpClient := &http.Client{Timeout: cfg.HttpClientTimeout}
-	client := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
-
-	service := scraper.NewService(
-		client,
-		store,
-		scraper.WithChunkSize(cfg.ChunkSize),
-		scraper.WithPollInterval(cfg.PollInterval),
-	)
-
-	// Run scraper to seed data
-	events, done := service.Start(seedCtx)
-
-	// Use channel for safe communication between goroutines
-	resultChan := make(chan error, 1)
-
-	// Use subscriber pattern for cleaner event handling
-	subscriberCloser := scraper.NewSubscriber(events,
-		scraper.OnBackfillDone(func(e scraper.BackfillDone) {
-			slog.InfoContext(seedCtx, "✅ Demo database seeding completed successfully")
-			resultChan <- nil // Signal success
-			cancel()          // Stop seeding
-		}),
-		scraper.OnBackfillError(func(e scraper.BackfillError) {
-			resultChan <- e.Err // Signal error
-			cancel()            // Stop seeding on error
-		}),
-	)
-	defer subscriberCloser()
-
-	// Wait for completion or timeout (handled by context)
-	<-done
-
-	// Get result from channel (non-blocking since we know service finished)
-	select {
-	case err := <-resultChan:
-		return err
-	default:
-		return nil // No result received, assume success
-	}
+func (m *SchemaMigrator) Migrate(ctx context.Context, db *sql.DB, conf pgtestdb.Config) error {
+	return ApplyMigrationsDB(db, m.migrationsDir)
 }
 
 // ApplyMigrations applies database migrations using sql-migrate with the provided pgx pool
@@ -199,7 +85,7 @@ func ApplyMigrations(pool *pgxpool.Pool, migrationsDir string) error {
 	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 
-	return applyMigrations(db, migrationsDir)
+	return ApplyMigrationsDB(db, migrationsDir)
 }
 
 // InitializeCheckpoint initializes the scraper checkpoint if not already set
@@ -220,8 +106,11 @@ func SetCheckpoint(ctx context.Context, pool *pgxpool.Pool, checkpoint uint64) e
 	return nil
 }
 
-// applyMigrations applies database migrations using sql-migrate
-func applyMigrations(db *sql.DB, migrationsDir string) error {
+// ApplyMigrationsDB applies database migrations using sql-migrate against an existing *sql.DB.
+// Exported so pgtestdb.Migrator implementations outside this package (see
+// web/internal/seedtestdb) can apply migrations without duplicating this logic; pgtestdb
+// hands them a *sql.DB directly, not a *pgxpool.Pool.
+func ApplyMigrationsDB(db *sql.DB, migrationsDir string) error {
 	source := &migrate.FileMigrationSource{Dir: migrationsDir}
 	migrationSet := &migrate.MigrationSet{TableName: migrationsTableName}
 

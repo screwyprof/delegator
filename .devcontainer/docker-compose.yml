@@ -25,7 +25,7 @@ services:
       MIGRATOR_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
       SCRAPER_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
       WEB_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
-      SCRAPER_TEST_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
+      TEST_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
     volumes:
       # Update this to wherever you want VS Code to mount the folder of your project
       - .:/workspaces:cached

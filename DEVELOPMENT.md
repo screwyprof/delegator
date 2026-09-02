@@ -182,22 +182,22 @@ Dual indexes (timestamp DESC) and (year, timestamp DESC) turned multi-second sca
 
 ### 5.2 Implementation
 
-**Two migrator types for different test needs:**
+**Two migrator types for different test needs, living in two different modules:**
 
 ```go
-// Schema-only tests (scraper acceptance tests)
+// Schema-only tests (scraper acceptance tests) — migrator/migratortest, no scraper dependency
 testDB := migratortest.CreateScraperTestDatabase(t, "migrations", checkpoint)
 
-// Data-seeded tests (web API acceptance tests)  
-testDB := migratortest.CreateSeededTestDatabase(t, "migrations", demoCheckpoint, chunkSize, timeout)
+// Data-seeded tests (web API acceptance tests) — web/internal/seedtestdb, the sole consumer
+testDB := seedtestdb.CreateSeededTestDatabase(t, "migrations")
 ```
 
 **Key insight**: `pgtestdb` creates template databases once, then clones them instantly for each test. No repeated migrations.
 
 ### 5.3 Why It Works
 - **Template database pattern**: Schema + seed data prepared once, cloned per test
-- **`SchemaMigrator`**: Just runs SQL migrations for clean schema tests
-- **`SeededMigrator`**: Runs migrations + uses scraper to populate realistic delegation data
+- **`migrator.SchemaMigrator`**: Just runs SQL migrations for clean schema tests — lives in `migrator`, which has no dependency on `scraper`
+- **`seedtestdb`'s migrator**: Runs migrations + uses the real scraper to populate realistic delegation data — lives in `web/internal/seedtestdb` instead of `migrator`, since seeding-via-scraper is only ever needed by web's acceptance tests. Both implement `pgtestdb.Migrator`, so `migratortest.CreateTestDatabase(t, migratorInstance)` works with either without `migrator` ever importing `scraper`
 - **Fast parallel tests**: Each test gets isolated database in milliseconds
 
 ### 5.4 Key Takeaways
@@ -210,30 +210,24 @@ testDB := migratortest.CreateSeededTestDatabase(t, "migrations", demoCheckpoint,
 
 ## 6 Test Configuration Strategy
 
-### 6.1 Key Decision – Module-Local `testcfg`
-Each module owns a tiny `testcfg` package that parses **test-only** environment variables (all prefixed with `*_TEST_`). This lets acceptance tests dial chunk sizes down, shorten polling intervals, or point to sandbox endpoints **without touching** the developer’s normal `.env`.
+### 6.1 Key Decision – `testcfg` Only for Values With No Production Meaning
+Earlier versions of this codebase gave every module a `testcfg` package mirroring its production `config` — same fields, `*_TEST_`-prefixed env vars, different defaults. It looked principled but wasn't: most of those "test-optimized" values turned out not to matter. E.g. scraper's `PollingStarted` event fires *before* the poll ticker is ever awaited, so the 100ms test-tuned poll interval was never actually exercised versus production's 10s default — dead tuning. Worse, it hid a real ownership problem: `migrator`'s test helper was quietly reaching into `scraper`'s `testcfg` for database-bootstrap settings (`DatabaseURL`, `Checkpoint`) that `migrator` conceptually owns.
 
-```go
-// scraper/testcfg/config.go (excerpt)
-type Config struct {
-    ChunkSize    uint64        `env:"SCRAPER_TEST_CHUNK_SIZE" envDefault:"1000"`
-    PollInterval time.Duration `env:"SCRAPER_TEST_POLL_INTERVAL" envDefault:"100ms"`
-}
-```
+`web/testcfg` turned out to be pure duplication of two fields already in `web/config` and was deleted outright. `pkg/tzkt/testcfg` is the one exception that kept its full set of fields, for a structural reason rather than a values one: `pkg` has no production config to reuse, and reusing `scraper/config` would mean the shared kernel module depending on a service module.
 
-Why bother? Parallel tests now finish in **under three seconds** instead of minutes, and because they point to throw-away template databases the developer’s own Postgres instance stays untouched.
+Parallel tests still finish in **under three seconds**, and because they point to throw-away template databases the developer's own Postgres instance stays untouched.
 
 ### 6.2 Take-Away
 Environment-configurable tests keep the codebase stateless, the suite lightning-fast, **and they help us sit comfortably at ~92% statement coverage** (see `make coverage`).
 For the visual crowd, `make coverage-svg` pops up an interactive treemap so you can **see** which files need love at a glance.
 
 ### 6.3 Running Acceptance Tests: localhost vs. devcontainer
-Acceptance tests (build tag `acceptance`) and `pgtestdb` both need a real Postgres reachable over the network. The only knob that differs between environments is **hostname**, driven by `SCRAPER_TEST_DATABASE_URL` (defaults to `localhost:5432`, same convention as `SCRAPER_DATABASE_URL`/`WEB_DATABASE_URL`/`MIGRATOR_DATABASE_URL`):
+Acceptance tests (build tag `acceptance`) and `pgtestdb` both need a real Postgres reachable over the network. The only knob that differs between environments is **hostname**, driven by `TEST_DATABASE_URL` (defaults to `localhost:5432`, same convention as `SCRAPER_DATABASE_URL`/`WEB_DATABASE_URL`/`MIGRATOR_DATABASE_URL`; not service-prefixed, since every module's test database setup shares this one setting):
 
 * **On the bare host** (`direnv allow && make check`): `docker compose up -d postgres` publishes `5432` to the host, so the `localhost` default just works.
-* **Inside the devcontainer**: the `gopher-dev` service is its own container on the Compose network, so `localhost` there means *itself*, not `postgres`. `.devcontainer/docker-compose.yml` overrides every `*_DATABASE_URL` (including `SCRAPER_TEST_DATABASE_URL`) to `postgres:5432`, which resolves via Compose's built-in DNS — the same mechanism `docker-compose.yaml` already uses for the `migrator`/`scraper`/`web` service containers.
+* **Inside the devcontainer**: the `gopher-dev` service is its own container on the Compose network, so `localhost` there means *itself*, not `postgres`. `.devcontainer/docker-compose.yml` overrides every `*_DATABASE_URL` (including `TEST_DATABASE_URL`) to `postgres:5432`, which resolves via Compose's built-in DNS — the same mechanism `docker-compose.yaml` already uses for the `migrator`/`scraper`/`web` service containers.
 
-`migrator/migratortest.createTestDatabaseConfig` parses `SCRAPER_TEST_DATABASE_URL` (rather than hard-coding `localhost`) so `pgtestdb` picks up whichever host is correct for where the tests are running — no separate configuration or manual overrides needed in either environment. Run acceptance tests with `make test`/`make check`, or directly via `go test -tags=acceptance ./...` per module.
+`migrator/migratortest`'s internal config parses `TEST_DATABASE_URL` (rather than hard-coding `localhost`) so `pgtestdb` picks up whichever host is correct for where the tests are running — no separate configuration or manual overrides needed in either environment. Run acceptance tests with `make test`/`make check`, or directly via `go test -tags=acceptance ./...` per module.
 
 ---
 

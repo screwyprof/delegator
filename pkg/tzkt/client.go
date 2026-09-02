@@ -79,7 +79,7 @@ func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]
 	defer func() {
 		// Drain response body to enable connection reuse
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != http.StatusOK {

@@ -21,13 +21,8 @@ import (
 	"github.com/screwyprof/delegator/scraper/testcfg"
 )
 
-// TestScraperAcceptanceBehavior tests end-to-end scraper functionality with real PostgreSQL and Tezos API
-//
-// Configuration:
-//   - Uses testcfg.New() for test-optimized parameters:
-//     ChunkSize=1000 (vs 10000 in production) for faster tests
-//     PollInterval=100ms (vs 10s in production) for faster tests
-//   - Override via environment variables if needed (SCRAPER_TEST_CHUNK_SIZE, etc.)
+// TestScraperAcceptanceBehavior tests end-to-end scraper functionality with real PostgreSQL and Tezos API.
+// Uses scraper/config.New() directly for the service; see scraper/testcfg for what's test-only and why.
 func TestScraperAcceptanceBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -35,14 +30,12 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		// Load test configuration (ALL test-optimized parameters)
 		testCfg := testcfg.New()
-
-		// prod config
-		cfg := createProdCfg(testCfg)
+		cfg := config.New()
+		checkpoint := testCfg.Checkpoint
 
 		// Create test database with schema + checkpoint (migrator concern)
-		testDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", uint64(testCfg.Checkpoint))
+		testDB := migratortest.CreateScraperTestDatabase(t, "../migrator/migrations", uint64(checkpoint))
 		defer testDB.Close()
 
 		// Create separate connection for production code (connection isolation)
@@ -65,7 +58,7 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		// Assert
 		assertBackfillSucceeded(t, backfillResult)
 		// Test assertions use separate connection for isolation
-		assertDataWasStoredCorrectly(t, testDB)(backfillResult, testCfg.Checkpoint)
+		assertDataWasStoredCorrectly(t, testDB)(backfillResult, checkpoint)
 	})
 }
 
@@ -211,14 +204,4 @@ func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store,
 		scraper.WithChunkSize(cfg.ChunkSize),
 		scraper.WithPollInterval(cfg.PollInterval),
 	)
-}
-
-func createProdCfg(testCfg testcfg.Config) config.Config {
-	prodCfg := config.New()
-	prodCfg.ChunkSize = testCfg.ChunkSize
-	prodCfg.PollInterval = testCfg.PollInterval
-	prodCfg.HttpClientTimeout = testCfg.HttpClientTimeout
-	prodCfg.TzktAPIURL = testCfg.TzktAPIURL
-
-	return prodCfg
 }

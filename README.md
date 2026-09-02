@@ -32,7 +32,7 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
    * HTML: `make coverage-html` 
    * Visual treemap: `make coverage-svg`
 
-Acceptance tests connect via `SCRAPER_TEST_DATABASE_URL` (default: `localhost:5432`, matching a host-run `docker compose up -d postgres`). Inside the devcontainer this is pre-wired to the `postgres` service name instead — see [DEVELOPMENT.md §6.3](DEVELOPMENT.md#63-running-acceptance-tests-localhost-vs-devcontainer) for details.
+Acceptance tests connect via `TEST_DATABASE_URL` (default: `localhost:5432`, matching a host-run `docker compose up -d postgres`). Inside the devcontainer this is pre-wired to the `postgres` service name instead — see [DEVELOPMENT.md §6.3](DEVELOPMENT.md#63-running-acceptance-tests-localhost-vs-devcontainer) for details.
 
 ## 📝 Log Samples
 A sneak peek at the logs tail:  `docker compose logs -f <service>`:
