@@ -20,7 +20,11 @@ DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Build configuration
 GO_FILES := $(shell find . -name "*.go" | grep -v vendor)
-TEST_FLAGS := -race -parallel 4 -v
+# -count=1 disables go test's own result cache. Without it, acceptance tests that hit real
+# network/DB side effects can silently return a stale cached pass (and stale coverage numbers)
+# instead of actually re-running -- this cache is local per-machine, so it's also why `make
+# coverage` could report different numbers on the host vs. in the devcontainer for the same code.
+TEST_FLAGS := -race -parallel 4 -v -count=1
 PACKAGES := ./... ./pkg/... ./scraper/... ./web/...
 # Coverage exclusion patterns (blacklist approach using grep)
 COVERAGE_EXCLUDE := -e "./migrator/" -e "testcfg/" -e "cmd/" -e "web/config/" -e "web/internal/seedtestdb/"
@@ -118,7 +122,7 @@ coverage: ## Run all tests with coverage using -coverpkg to include all packages
 	@echo -e "$(OK_COLOR)--> Running workspace coverage$(NO_COLOR)"
 	@rm -rf coverage && mkdir -p coverage
 	@echo -e "$(OK_COLOR)--> Collecting coverage with explicit package list$(NO_COLOR)"
-	@go test -v -tags=acceptance -covermode=atomic -coverprofile=coverage/raw.out -coverpkg=$(COVERPKG_PACKAGES) $(PACKAGES) || true
+	@go test -v -count=1 -tags=acceptance -covermode=atomic -coverprofile=coverage/raw.out -coverpkg=$(COVERPKG_PACKAGES) $(PACKAGES) || true
 	@# Apply exclusions and show results
 	@if [ -f "coverage/raw.out" ]; then \
 		cat coverage/raw.out | grep -v $(COVERAGE_EXCLUDE) > coverage.out 2>/dev/null || cp coverage/raw.out coverage.out; \
