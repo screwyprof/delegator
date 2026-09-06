@@ -12,6 +12,12 @@ services:
     # https://github.com/cachix/devenv/blob/main/containers/devcontainer/Dockerfile
     image: ghcr.io/cachix/devenv/devcontainer
     # init: true  # tini as PID 1 → reaps orphaned setup processes (no <defunct> zombie pileup)
+    #   STAYS COMMENTED: if podman itself is running inside another container or namespace
+    #   (e.g. systemd-nspawn) with locked /proc masks, a private PID namespace can't be mounted
+    #   (`crun: mount proc: Operation not permitted`), and podman then refuses --init outright:
+    #   "cannot add init binary as PID 1 (PID namespace isn't private)". No reaper is lost in that
+    #   case — the container shares the outer environment's PID namespace, whose PID 1 already
+    #   reaps orphans. Environments with a genuinely private PID namespace can safely enable this.
     userns_mode: "keep-id"  # podman-only; no-op for docker+gVisor (rootful maps vscode:1000 -> dev:1000)
     # gopher-dev is its own container on the compose network, so "localhost" here means
     # gopher-dev itself, not the postgres container. Point every *_DATABASE_URL at the

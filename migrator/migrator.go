@@ -83,7 +83,7 @@ func (m *SchemaMigrator) Migrate(ctx context.Context, db *sql.DB, conf pgtestdb.
 func ApplyMigrations(pool *pgxpool.Pool, migrationsDir string) error {
 	// Create sql.DB from the pgx pool for sql-migrate
 	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	return ApplyMigrationsDB(db, migrationsDir)
 }

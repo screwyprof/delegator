@@ -407,7 +407,7 @@ func assertPreservesQueryParameters(t *testing.T, resp *http.Response, expectedP
 func parseJSONResponse[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var result T
 	err := json.NewDecoder(resp.Body).Decode(&result)

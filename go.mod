@@ -12,10 +12,8 @@ replace github.com/screwyprof/delegator/web => ./web
 replace github.com/screwyprof/delegator/migrator => ./migrator
 
 tool (
-	github.com/daixiang0/gci
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/nikolaydubina/go-cover-treemap
-	mvdan.cc/gofumpt
 )
 
 require (
