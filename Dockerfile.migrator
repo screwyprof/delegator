@@ -3,7 +3,7 @@
 ############################
 # 1. Build Stage           #
 ############################
-FROM golang:1.27-alpine AS builder
+FROM golang:1.26.7-alpine AS builder
 
 # Install git for fetching private / VCS-hosted modules
 RUN apk add --no-cache git

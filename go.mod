@@ -1,6 +1,6 @@
 module github.com/screwyprof/delegator
 
-go 1.27.0
+go 1.26.7
 
 // Local development - point to local directories instead of GitHub
 replace github.com/screwyprof/delegator/pkg => ./pkg
