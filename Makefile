@@ -35,8 +35,9 @@ MODULE_DIRS = $(shell go list -m -f '{{.Dir}}')
 # Coverage exclusion patterns (regex alternation, anchored to whole path segments via
 # "(/|$)" so e.g. "cmd" can't match a substring of some unrelated future package name).
 COVERAGE_EXCLUDE := migrator|testcfg|cmd|web/config|web/internal/seedtestdb
-# Package list for -coverpkg with excluded packages already filtered out, so `go test`
-# writes the final coverage.out directly -- no raw profile + separate filtering pass.
+# Package list for -coverpkg with excluded packages already filtered out here --
+# exclusion happens upfront via -coverpkg, not via a second grep-based filtering
+# pass over a raw profile (see the coverage target for the GOCOVERDIR merge step).
 # No -race here, matching the coverage run below, which also doesn't use it (see RACE_FLAG).
 # Lazily expanded ("=" not ":=") so this only shells out when $(COVERPKG) is actually
 # referenced (the coverage target), not on every make invocation.
@@ -131,7 +132,12 @@ coverage: ## Run all tests with coverage, excluding packages not meaningful to m
 	@# Deliberately no `|| true`: a failing test aborting here (and coverage-html/-svg with
 	@# it) is correct -- the old fallback let `make coverage` exit 0 on real test failures,
 	@# silently reporting coverage numbers from a run that didn't actually pass.
-	@go test $(TEST_FLAGS) -tags=acceptance -covermode=atomic -coverprofile=coverage.out -coverpkg=$(COVERPKG) work
+	@# GOCOVERDIR + covdata, not -coverprofile: covdata merges counters natively instead
+	@# of concatenating each test binary's own text records, avoiding the redundant
+	@# per-binary duplication a broad -coverpkg produces in a text profile.
+	@covdir="$$(mktemp -d)"; trap 'rm -rf "$$covdir"' EXIT; \
+	 go test $(TEST_FLAGS) -tags=acceptance -cover -covermode=atomic -coverpkg=$(COVERPKG) work -args -test.gocoverdir="$$covdir"; \
+	 go tool covdata textfmt -i="$$covdir" -o=coverage.out
 	@echo -e "$(OK_COLOR)--> Coverage Summary:$(NO_COLOR)"
 	@go tool cover -func=coverage.out | grep "total:" || echo "No coverage data"
 
