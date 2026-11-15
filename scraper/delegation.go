@@ -3,7 +3,7 @@ package scraper
 import "time"
 
 // Delegation represents a delegation in the scraper domain model
-// This is the canonical representation used within the scraper service
+// This is the canonical representation used within the scraper service.
 type Delegation struct {
 	ID        int64
 	Level     int64

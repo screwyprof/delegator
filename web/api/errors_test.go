@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,6 +13,19 @@ import (
 	"github.com/screwyprof/delegator/web/api"
 )
 
+// Errors the API wraps, as a handler would receive them from lower layers.
+var (
+	errInvalidYearFormat = errors.New("invalid year parameter: year must be exactly 4 digits (YYYY format)")
+	errDatabaseAuth      = errors.New("database connection failed: password authentication failed for user 'admin'")
+	errUnclassified      = errors.New("some random error")
+	errPerPageOutOfRange = errors.New("invalid per_page parameter: per_page must be between 1 and 100")
+	errSomeValidation    = errors.New("some validation error")
+	errOriginal          = errors.New("original error")
+)
+
+// API errors show clients only what is safe: a 400 carries its cause'"s
+// API errors show clients only what is safe: a 400 carries its cause's message, a 500 a generic
+// one, while the full cause stays available for logs.
 func TestAPIErrorHandling(t *testing.T) {
 	t.Parallel()
 
@@ -19,7 +33,7 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Parallel()
 
 		// Arrange - any validation error (all 4xx are safe by design)
-		validationErr := errors.New("invalid year parameter: year must be exactly 4 digits (YYYY format)")
+		validationErr := errInvalidYearFormat
 
 		// Act
 		apiErr := api.BadRequest(validationErr)
@@ -34,7 +48,7 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Parallel()
 
 		// Arrange - internal database error (should NOT be exposed)
-		internalErr := errors.New("database connection failed: password authentication failed for user 'admin'")
+		internalErr := errDatabaseAuth
 
 		// Act
 		apiErr := api.InternalServerError(internalErr)
@@ -49,7 +63,7 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		unknownErr := errors.New("some random error")
+		unknownErr := errUnclassified
 
 		// Act
 		apiErr := api.Wrap(unknownErr)
@@ -65,7 +79,7 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		validationErr := errors.New("invalid per_page parameter: per_page must be between 1 and 100")
+		validationErr := errPerPageOutOfRange
 		apiErr := api.BadRequest(validationErr)
 
 		// Act
@@ -74,19 +88,25 @@ func TestAPIErrorHandling(t *testing.T) {
 		// Assert
 		require.NoError(t, err)
 
-		var response map[string]any
-		err = json.Unmarshal(jsonBytes, &response)
-		require.NoError(t, err)
+		// Strict decode: the body must be exactly {code, message}, nothing else.
+		var response struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		}
 
-		assert.Equal(t, float64(http.StatusBadRequest), response["code"])
-		assert.Equal(t, "invalid per_page parameter: per_page must be between 1 and 100", response["message"])
+		decoder := json.NewDecoder(bytes.NewReader(jsonBytes))
+		decoder.DisallowUnknownFields()
+		require.NoError(t, decoder.Decode(&response))
+
+		assert.Equal(t, http.StatusBadRequest, response.Code)
+		assert.Equal(t, "invalid per_page parameter: per_page must be between 1 and 100", response.Message)
 	})
 
 	t.Run("it prevents double-wrapping of API errors", func(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		originalErr := errors.New("some validation error")
+		originalErr := errSomeValidation
 		apiErr1 := api.BadRequest(originalErr)
 
 		// Act - try to wrap an already wrapped error
@@ -100,11 +120,11 @@ func TestAPIErrorHandling(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
-		originalErr := errors.New("original error")
+		originalErr := errOriginal
 		apiErr := api.BadRequest(originalErr)
 
 		// Act & Assert - errors.Is should work through the wrapper
-		assert.True(t, errors.Is(apiErr, originalErr))
+		require.ErrorIs(t, apiErr, originalErr)
 		assert.Equal(t, originalErr, errors.Unwrap(apiErr))
 	})
 

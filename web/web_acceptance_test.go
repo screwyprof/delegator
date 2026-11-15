@@ -29,7 +29,7 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
-// TestWebAPIAcceptanceBehavior tests end-to-end web API functionality
+// TestWebAPIAcceptanceBehavior tests end-to-end web API functionality.
 func TestWebAPIAcceptanceBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -49,10 +49,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 		// Arrange
 		server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 		defer cleanup()
+
 		client := createTestAPIClient(t)
 
 		// Act
-		response := makeGetDelegationsRequest(t, client, server.URL)
+		response := makeGetDelegations(t, client, server.URL, delegationsQuery{})
 		delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 		// Assert
@@ -72,10 +73,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 
 		server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 		defer cleanup()
+
 		client := createTestAPIClient(t)
 
 		// Act
-		response := makeGetDelegationsWithYearRequest(t, client, server.URL, year)
+		response := makeGetDelegations(t, client, server.URL, delegationsQuery{Year: year})
 		delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 		// Assert
@@ -95,10 +97,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerWithMinimalData(t)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegationsRequest(t, client, server.URL)
+			response := makeGetDelegations(t, client, server.URL, delegationsQuery{})
 			delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 			// Assert
@@ -113,10 +116,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegationsWithPagination(t, client, server.URL, 1, 10)
+			response := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 1, PerPage: 10})
 
 			// Assert
 			assertSuccessfulResponse(t, response)
@@ -131,10 +135,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegationsWithPagination(t, client, server.URL, 2, 10)
+			response := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 2, PerPage: 10})
 
 			// Assert
 			assertSuccessfulResponse(t, response)
@@ -164,16 +169,18 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 				client := createTestAPIClient(t)
 
 				// Act
-				response := makeGetDelegationsWithPagination(t, client, server.URL, 2, 10)
+				response := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 2, PerPage: 10})
 
 				// Assert
 				assertSuccessfulResponse(t, response)
+
 				for _, rel := range []string{"first", "prev", "next"} {
 					link := linkURL(response, rel)
 					require.NotNil(t, link, "Should provide a %s link", rel)
 					assert.Equal(t, wantLinkBase, link.Scheme+"://"+link.Host+link.Path,
 						"%s link should use the public URL %s, not the host the request arrived on", rel, publicBase)
 				}
+
 				cleanup()
 			}
 		})
@@ -184,6 +191,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
 			req, err := http.NewRequestWithContext(
@@ -199,6 +207,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Act
 			response, err := client.Do(req)
 			require.NoError(t, err, "HTTP request should succeed")
+
 			defer func() { _ = response.Body.Close() }()
 
 			// Assert: a spoofed header must not reach links (a shared cache could serve them to others)
@@ -214,15 +223,17 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegationsWithPagination(t, client, server.URL, 999999, 10)
+			response := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 999999, PerPage: 10})
 			delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 			// Assert
 			assertSuccessfulResponse(t, response)
 			assertExactDelegationCount(t, delegationsResp, 0)
+
 			first := linkURL(response, "first")
 			require.NotNil(t, first, "An empty page past the end should still link back to the first page")
 			assert.False(t, first.Query().Has("page"), "first link should not carry page")
@@ -234,6 +245,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 			forged := base64.RawURLEncoding.EncodeToString([]byte("v1:0:-9223372036854775808:1"))
 
@@ -247,6 +259,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			require.NoError(t, err, "Should create HTTP request")
 			response, err := client.Do(req)
 			require.NoError(t, err, "HTTP request should succeed")
+
 			defer func() { _ = response.Body.Close() }()
 
 			// Assert
@@ -254,7 +267,8 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 				t,
 				http.StatusBadRequest,
 				response.StatusCode,
-				"A forged cursor outside any representable timestamp must be rejected, not silently page a wrapped-around position",
+				"A forged cursor outside any representable timestamp must be rejected, "+
+					"not silently page a wrapped-around position",
 			)
 		})
 
@@ -264,9 +278,10 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
-			firstPage := makeGetDelegationsWithYearAndPagination(t, client, server.URL, 2025, 1, 10)
+			firstPage := makeGetDelegations(t, client, server.URL, delegationsQuery{Year: 2025, Page: 1, PerPage: 10})
 			next := linkURL(firstPage, "next")
 			require.NotNil(t, next, "Should provide a next link")
 
@@ -279,6 +294,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			require.NoError(t, err, "Should create HTTP request")
 			response, err := client.Do(req)
 			require.NoError(t, err, "HTTP request should succeed")
+
 			defer func() { _ = response.Body.Close() }()
 
 			// Assert
@@ -294,10 +310,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 
 			server, db, cleanup := createTestServerWithCleanDatabase(t)
 			defer cleanup()
+
 			insertDelegationsWithTiedTimestamps(t, db)
 			client := createTestAPIClient(t)
 
-			firstPage := makeGetDelegationsWithPagination(t, client, server.URL, 1, perPage)
+			firstPage := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 1, PerPage: perPage})
 			secondPage := followLink(t, client, firstPage, "next")
 			_ = parseJSONResponse[api.DelegationsResponse](t, firstPage)
 
@@ -307,7 +324,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 
 			// Assert
 			assertSuccessfulResponse(t, backToFirst)
-			assert.Equal(t, tiedDelegationsNewestFirst[:perPage], delegatorIDs(t, delegationsResp.Data),
+			assert.Equal(t, tiedDelegationsNewestFirst()[:perPage], delegatorIDs(t, delegationsResp.Data),
 				"Following prev from the second page should return exactly the first page")
 			assertMissingPrevLink(t, backToFirst)
 			assertContainsNextLink(t, backToFirst)
@@ -319,16 +336,17 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			// Arrange
 			server, db, cleanup := createTestServerWithCleanDatabase(t)
 			defer cleanup()
+
 			insertDelegationsWithTiedTimestamps(t, db)
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegationsWithPagination(t, client, server.URL, 1, tezos.MaxPerPage)
+			response := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 1, PerPage: tezos.MaxPerPage})
 			delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 			// Assert
 			assertSuccessfulResponse(t, response)
-			assert.Equal(t, tiedDelegationsNewestFirst, delegatorIDs(t, delegationsResp.Data),
+			assert.Equal(t, tiedDelegationsNewestFirst(), delegatorIDs(t, delegationsResp.Data),
 				"Delegations sharing a timestamp should come back in a stable id-descending order")
 		})
 
@@ -342,6 +360,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 
 				server, db, cleanup := createTestServerWithCleanDatabase(t)
 				defer cleanup()
+
 				insertDelegationsWithTiedTimestamps(t, db)
 				client := createTestAPIClient(t)
 
@@ -353,9 +372,10 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 				// Assert
 				assert.Equal(
 					t,
-					tiedDelegationsNewestFirst,
+					tiedDelegationsNewestFirst(),
 					seen,
-					"Following next links should return each pre-existing delegation once, in order, with no gaps or repeats",
+					"Following next links should return each pre-existing delegation once, in order, "+
+						"with no gaps or repeats",
 				)
 			},
 		)
@@ -364,16 +384,24 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			t.Parallel()
 
 			// Arrange
-			const year = 2025
-			const perPage = 5
-			const page = 2
+			const (
+				year    = 2025
+				perPage = 5
+				page    = 2
+			)
 
 			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
 			defer cleanup()
+
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegationsWithYearAndPagination(t, client, server.URL, year, page, perPage)
+			response := makeGetDelegations(
+				t,
+				client,
+				server.URL,
+				delegationsQuery{Year: year, Page: page, PerPage: perPage},
+			)
 
 			// Assert
 			assertSuccessfulResponse(t, response)
@@ -390,23 +418,25 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 // Arrange Phase Helpers - Factory functions for test setup
 // =============================================================================
 
-// createTestAPIClient creates an HTTP client for API testing
+// createTestAPIClient creates an HTTP client for API testing.
 func createTestAPIClient(t *testing.T) *http.Client {
 	t.Helper()
+
 	return http.DefaultClient
 }
 
-// createTestServerUsingSeededDatabase creates a test server that connects to an already-seeded database
+// createTestServerUsingSeededDatabase creates a test server that connects to an already-seeded database.
 func createTestServerUsingSeededDatabase(
 	t *testing.T,
 	dbConnString string,
 	opts ...handler.Option,
 ) (*httptest.Server, func()) {
 	t.Helper()
+
 	return createTestServerWithIsolatedConnection(t, dbConnString, opts...)
 }
 
-// createTestServerWithMinimalData creates a test server with minimal test data
+// createTestServerWithMinimalData creates a test server with minimal test data.
 func createTestServerWithMinimalData(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 
@@ -427,63 +457,24 @@ func createTestServerWithMinimalData(t *testing.T) (*httptest.Server, func()) {
 // Action Helpers - HTTP request helpers that express intent
 // =============================================================================
 
-// makeGetDelegationsRequest performs a basic GET /xtz/delegations request
-func makeGetDelegationsRequest(t *testing.T, client *http.Client, baseURL string) *http.Response {
-	t.Helper()
-
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/xtz/delegations", nil)
-	require.NoError(t, err, "Should create HTTP request")
-
-	resp, err := client.Do(req)
-	require.NoError(t, err, "HTTP request should succeed")
-
-	return resp
+// delegationsQuery is the query string of a GET /xtz/delegations request; zero fields are omitted.
+type delegationsQuery struct {
+	Year, Page, PerPage int
 }
 
-// makeGetDelegationsWithYearRequest performs GET /xtz/delegations with year filter
-func makeGetDelegationsWithYearRequest(t *testing.T, client *http.Client, baseURL string, year int) *http.Response {
+// makeGetDelegations performs GET /xtz/delegations with the given query.
+func makeGetDelegations(t *testing.T, client *http.Client, baseURL string, q delegationsQuery) *http.Response {
 	t.Helper()
 
-	url := fmt.Sprintf("%s/xtz/delegations?year=%d", baseURL, year)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
-	require.NoError(t, err, "Should create HTTP request")
+	query := url.Values{}
 
-	resp, err := client.Do(req)
-	require.NoError(t, err, "HTTP request should succeed")
+	for name, value := range map[string]int{"year": q.Year, "page": q.Page, "per_page": q.PerPage} {
+		if value != 0 {
+			query.Set(name, strconv.Itoa(value))
+		}
+	}
 
-	return resp
-}
-
-// makeGetDelegationsWithPagination performs GET /xtz/delegations with pagination
-func makeGetDelegationsWithPagination(
-	t *testing.T,
-	client *http.Client,
-	baseURL string,
-	page, perPage int,
-) *http.Response {
-	t.Helper()
-
-	url := fmt.Sprintf("%s/xtz/delegations?page=%d&per_page=%d", baseURL, page, perPage)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
-	require.NoError(t, err, "Should create HTTP request")
-
-	resp, err := client.Do(req)
-	require.NoError(t, err, "HTTP request should succeed")
-
-	return resp
-}
-
-// makeGetDelegationsWithYearAndPagination performs GET /xtz/delegations with year filter and pagination
-func makeGetDelegationsWithYearAndPagination(
-	t *testing.T,
-	client *http.Client,
-	baseURL string,
-	year, page, perPage int,
-) *http.Response {
-	t.Helper()
-
-	url := fmt.Sprintf("%s/xtz/delegations?year=%d&page=%d&per_page=%d", baseURL, year, page, perPage)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/xtz/delegations?"+query.Encode(), nil)
 	require.NoError(t, err, "Should create HTTP request")
 
 	resp, err := client.Do(req)
@@ -496,38 +487,37 @@ func makeGetDelegationsWithYearAndPagination(
 // Named Domain Assertions - Business rule assertions
 // =============================================================================
 
-// assertSuccessfulResponse verifies the HTTP response indicates success
+// assertSuccessfulResponse verifies the HTTP response indicates success.
 func assertSuccessfulResponse(t *testing.T, resp *http.Response) {
 	t.Helper()
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Should return HTTP 200 OK")
 }
 
-// assertReturnsDefaultPagination verifies response uses default pagination (50 items)
+// assertReturnsDefaultPagination verifies response uses default pagination (50 items).
 func assertReturnsDefaultPagination(t *testing.T, response api.DelegationsResponse) {
 	t.Helper()
-	assert.Equal(
+	assert.Len(
 		t,
-		tezos.DefaultPerPage,
-		len(response.Data),
+		response.Data, tezos.DefaultPerPage,
 		"Should return exactly %d delegations (default pagination limit)",
 		tezos.DefaultPerPage,
 	)
 }
 
-// assertReturnsNonEmptyResults verifies response contains at least one delegation
+// assertReturnsNonEmptyResults verifies response contains at least one delegation.
 func assertReturnsNonEmptyResults(t *testing.T, response api.DelegationsResponse) {
 	t.Helper()
-	assert.Greater(t, len(response.Data), 0, "Should return some delegations")
+	assert.NotEmpty(t, response.Data, "Should return some delegations")
 	t.Logf("📋 Response contains %d delegations", len(response.Data))
 }
 
-// assertExactDelegationCount verifies response contains exactly the expected number of delegations
+// assertExactDelegationCount verifies response contains exactly the expected number of delegations.
 func assertExactDelegationCount(t *testing.T, response api.DelegationsResponse, expected int) {
 	t.Helper()
-	assert.Equal(t, expected, len(response.Data), "Should return exactly %d delegations", expected)
+	assert.Len(t, response.Data, expected, "Should return exactly %d delegations", expected)
 }
 
-// assertDelegationsOrderedMostRecentFirst verifies delegations are ordered by timestamp descending
+// assertDelegationsOrderedMostRecentFirst verifies delegations are ordered by timestamp descending.
 func assertDelegationsOrderedMostRecentFirst(t *testing.T, delegations []api.Delegation) {
 	t.Helper()
 
@@ -535,17 +525,18 @@ func assertDelegationsOrderedMostRecentFirst(t *testing.T, delegations []api.Del
 		return // Nothing to verify with 0 or 1 items
 	}
 
-	for i := 0; i < len(delegations)-1; i++ {
+	for i := range len(delegations) - 1 {
 		current := delegations[i].Timestamp
 		next := delegations[i+1].Timestamp
 		assert.GreaterOrEqual(t, current, next,
 			"Delegations should be ordered most recent first (index %d: %s should be >= %s)",
 			i, current, next)
 	}
+
 	t.Logf("✅ Ordering verified: most recent first")
 }
 
-// assertAllDelegationsFromYear verifies all delegations are from the specified year
+// assertAllDelegationsFromYear verifies all delegations are from the specified year.
 func assertAllDelegationsFromYear(t *testing.T, delegations []api.Delegation, year int) {
 	t.Helper()
 
@@ -558,7 +549,7 @@ func assertAllDelegationsFromYear(t *testing.T, delegations []api.Delegation, ye
 	}
 }
 
-// assertAllDelegationsHaveValidFormat verifies all delegations match the expected format
+// assertAllDelegationsHaveValidFormat verifies all delegations match the expected format.
 func assertAllDelegationsHaveValidFormat(t *testing.T, delegations []api.Delegation) {
 	t.Helper()
 
@@ -567,7 +558,7 @@ func assertAllDelegationsHaveValidFormat(t *testing.T, delegations []api.Delegat
 	}
 }
 
-// assertValidDelegationFormat verifies a single delegation matches TASK.md specification
+// assertValidDelegationFormat verifies a single delegation matches TASK.md specification.
 func assertValidDelegationFormat(t *testing.T, delegation api.Delegation, index int) {
 	t.Helper()
 
@@ -577,7 +568,7 @@ func assertValidDelegationFormat(t *testing.T, delegation api.Delegation, index 
 	assert.NotEmpty(t, delegation.Level, "Delegation %d should have level", index)
 }
 
-// assertPaginationLinksPresent verifies Link header is present
+// assertPaginationLinksPresent verifies Link header is present.
 func assertPaginationLinksPresent(t *testing.T, resp *http.Response) {
 	t.Helper()
 
@@ -585,7 +576,7 @@ func assertPaginationLinksPresent(t *testing.T, resp *http.Response) {
 	assert.NotEmpty(t, linkHeader, "Should provide Link header when pagination is needed")
 }
 
-// assertPaginationLinksAbsent verifies Link header is absent
+// assertPaginationLinksAbsent verifies Link header is absent.
 func assertPaginationLinksAbsent(t *testing.T, resp *http.Response) {
 	t.Helper()
 
@@ -593,7 +584,7 @@ func assertPaginationLinksAbsent(t *testing.T, resp *http.Response) {
 	assert.Empty(t, linkHeader, "Should omit Link header when all results fit on first page")
 }
 
-// assertContainsNextLink verifies Link header contains next link
+// assertContainsNextLink verifies Link header contains next link.
 func assertContainsNextLink(t *testing.T, resp *http.Response) {
 	t.Helper()
 
@@ -601,7 +592,7 @@ func assertContainsNextLink(t *testing.T, resp *http.Response) {
 	assert.Contains(t, linkHeader, `rel="next"`, "Should provide next link when more pages exist")
 }
 
-// assertMissingPrevLink verifies Link header does not contain prev link
+// assertMissingPrevLink verifies Link header does not contain prev link.
 func assertMissingPrevLink(t *testing.T, resp *http.Response) {
 	t.Helper()
 
@@ -609,7 +600,7 @@ func assertMissingPrevLink(t *testing.T, resp *http.Response) {
 	assert.NotContains(t, linkHeader, `rel="prev"`, "Should not provide prev link on first page")
 }
 
-// assertContainsPrevLink verifies Link header contains prev link
+// assertContainsPrevLink verifies Link header contains prev link.
 func assertContainsPrevLink(t *testing.T, resp *http.Response) {
 	t.Helper()
 
@@ -619,7 +610,7 @@ func assertContainsPrevLink(t *testing.T, resp *http.Response) {
 
 // assertCursorNavigation verifies links are absolute (like GitHub's), prev/next are anchored
 // to cursors (before/after) rather than page numbers, first carries no position, and all
-// keep per_page
+// keep per_page.
 func assertCursorNavigation(t *testing.T, resp *http.Response, expectedPerPage int) {
 	t.Helper()
 
@@ -627,9 +618,11 @@ func assertCursorNavigation(t *testing.T, resp *http.Response, expectedPerPage i
 
 	first := linkURL(resp, "first")
 	require.NotNil(t, first, "Should provide a first link when not on the first page")
+
 	for _, param := range []string{"page", "after", "before"} {
 		assert.False(t, first.Query().Has(param), "first link should not carry %s", param)
 	}
+
 	assert.Equal(t, strconv.Itoa(expectedPerPage), first.Query().Get("per_page"), "first link should preserve per_page")
 
 	for rel, cursorParam := range map[string]string{"prev": "before", "next": "after"} {
@@ -643,7 +636,7 @@ func assertCursorNavigation(t *testing.T, resp *http.Response, expectedPerPage i
 	}
 }
 
-// assertPreservesQueryParameters verifies pagination links preserve query parameters
+// assertPreservesQueryParameters verifies pagination links preserve query parameters.
 func assertPreservesQueryParameters(t *testing.T, resp *http.Response, expectedParams map[string]string) {
 	t.Helper()
 
@@ -660,20 +653,21 @@ func assertPreservesQueryParameters(t *testing.T, resp *http.Response, expectedP
 // Utility Functions
 // =============================================================================
 
-// parseJSONResponse parses HTTP response body as JSON into the specified type
+// parseJSONResponse parses HTTP response body as JSON into the specified type.
 func parseJSONResponse[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
 
 	defer func() { _ = resp.Body.Close() }()
 
 	var result T
+
 	err := json.NewDecoder(resp.Body).Decode(&result)
 	require.NoError(t, err, "Response should be valid JSON")
 
 	return result
 }
 
-// insertTestDelegations manually inserts a few test delegations for Link header omission test
+// insertTestDelegations manually inserts a few test delegations for Link header omission test.
 func insertTestDelegations(t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
 
@@ -694,7 +688,9 @@ func insertTestDelegations(t *testing.T, db *pgxpool.Pool) {
 // tiedDelegationsNewestFirst is the id order the API must return insertDelegationsWithTiedTimestamps'
 // rows in: timestamp DESC, then id DESC. Ids 9..5 share one timestamp, so with small pages
 // the tie straddles page boundaries.
-var tiedDelegationsNewestFirst = []int{10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
+func tiedDelegationsNewestFirst() []int {
+	return []int{10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
+}
 
 // createTestServerWithCleanDatabase creates a test server over an empty, schema-only database
 // and also returns a pool to it, so a test can insert data (including mid-request-sequence).
@@ -737,7 +733,7 @@ func insertNewerDelegation(t *testing.T, db *pgxpool.Pool) {
 	require.NoError(t, err, "Should insert a newer delegation")
 }
 
-// makeGetDelegationsURL builds the first-page URL for a pagination walk
+// makeGetDelegationsURL builds the first-page URL for a pagination walk.
 func makeGetDelegationsURL(baseURL string, perPage int) string {
 	return fmt.Sprintf("%s/xtz/delegations?per_page=%d", baseURL, perPage)
 }
@@ -749,6 +745,7 @@ func walkNextLinks(t *testing.T, client *http.Client, url string, afterFirstPage
 	t.Helper()
 
 	var seen []int
+
 	for page := 1; url != ""; page++ {
 		require.LessOrEqual(t, page, 100, "Pagination walk should terminate")
 
@@ -769,7 +766,7 @@ func walkNextLinks(t *testing.T, client *http.Client, url string, afterFirstPage
 	return seen
 }
 
-// followLink GETs the URL of resp's Link with the given rel, which must exist
+// followLink GETs the URL of resp's Link with the given rel, which must exist.
 func followLink(t *testing.T, client *http.Client, resp *http.Response, rel string) *http.Response {
 	t.Helper()
 
@@ -784,31 +781,34 @@ func followLink(t *testing.T, client *http.Client, resp *http.Response, rel stri
 	return next
 }
 
-// nextLink extracts the rel="next" URL from a Link header, or "" if there is none
+// nextLink extracts the rel="next" URL from a Link header, or "" if there is none.
 func nextLink(resp *http.Response) string {
 	if u := linkURL(resp, "next"); u != nil {
 		return u.String()
 	}
+
 	return ""
 }
 
 // linkURL extracts the URL with the given rel from a Link header, resolved against the
-// request URL (link targets may be relative), or nil if there is none
+// request URL (link targets may be relative), or nil if there is none.
 func linkURL(resp *http.Response, rel string) *url.URL {
-	for _, link := range strings.Split(resp.Header.Get("Link"), ",") {
+	for link := range strings.SplitSeq(resp.Header.Get("Link"), ",") {
 		target, params, ok := strings.Cut(strings.TrimSpace(link), ";")
 		if ok && strings.TrimSpace(params) == fmt.Sprintf("rel=%q", rel) {
 			u, err := resp.Request.URL.Parse(strings.Trim(target, "<>"))
 			if err != nil {
 				return nil
 			}
+
 			return u
 		}
 	}
+
 	return nil
 }
 
-// delegatorIDs recovers the ids of delegations inserted by this file's helpers ("tz1Test<id>")
+// delegatorIDs recovers the ids of delegations inserted by this file's helpers ("tz1Test<id>").
 func delegatorIDs(t *testing.T, delegations []api.Delegation) []int {
 	t.Helper()
 
@@ -816,8 +816,10 @@ func delegatorIDs(t *testing.T, delegations []api.Delegation) []int {
 	for _, d := range delegations {
 		id, err := strconv.Atoi(strings.TrimPrefix(d.Delegator, "tz1Test"))
 		require.NoError(t, err, "Delegator %q should be a tz1Test<id> fixture", d.Delegator)
+
 		ids = append(ids, id)
 	}
+
 	return ids
 }
 

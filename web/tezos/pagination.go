@@ -6,26 +6,26 @@ import (
 	"time"
 )
 
-// Default pagination values
+// Default pagination values.
 const (
 	DefaultPage    = 1   // Default to first page
 	DefaultPerPage = 50  // Default pagination size
 	MaxPerPage     = 100 // Maximum items per page
 )
 
-// Page represents a page number for pagination
+// Page represents a page number for pagination.
 type Page uint64
 
-// PerPage represents items per page for pagination
+// PerPage represents items per page for pagination.
 type PerPage uint64
 
-// Pagination validation errors
+// Pagination validation errors.
 var (
 	ErrPerPageNotPositive = errors.New("per_page must be positive")
 	ErrPerPageTooLarge    = errors.New("per_page exceeds maximum limit")
 )
 
-// ParsePageFromUint64 creates a Page from uint64 with default handling
+// ParsePageFromUint64 creates a Page from uint64 with default handling.
 func ParsePageFromUint64(page uint64) Page {
 	// Zero means use default page
 	if page == 0 {
@@ -35,7 +35,7 @@ func ParsePageFromUint64(page uint64) Page {
 	return Page(page)
 }
 
-// ParsePerPageFromUint64 creates a PerPage from uint64 with domain validation
+// ParsePerPageFromUint64 creates a PerPage from uint64 with domain validation.
 func ParsePerPageFromUint64(perPage uint64) (PerPage, error) {
 	// Zero means use default per_page
 	if perPage == 0 {
@@ -49,12 +49,12 @@ func ParsePerPageFromUint64(perPage uint64) (PerPage, error) {
 	return PerPage(perPage), nil
 }
 
-// Uint64 returns the underlying uint64 value
+// Uint64 returns the underlying uint64 value.
 func (p Page) Uint64() uint64 {
 	return uint64(p)
 }
 
-// Uint64 returns the underlying uint64 value
+// Uint64 returns the underlying uint64 value.
 func (pp PerPage) Uint64() uint64 {
 	return uint64(pp)
 }
@@ -67,12 +67,12 @@ type Cursor struct {
 	ID        int64
 }
 
-// CursorOf returns the position of d
+// CursorOf returns the position of d.
 func CursorOf(d Delegation) Cursor {
 	return Cursor{Timestamp: d.Timestamp, ID: d.ID}
 }
 
-// DelegationsPage represents a page of delegation results with navigation metadata
+// DelegationsPage represents a page of delegation results with navigation metadata.
 type DelegationsPage struct {
 	Delegations []Delegation // Newest first
 	Size        PerPage      // Page size
@@ -106,21 +106,21 @@ func NewDelegationsPage(criteria DelegationsCriteria, delegations []Delegation, 
 }
 
 // HasFirst reports whether to link back to the first page: any page but the first, even an
-// empty one (e.g. a page number past the end), since that link needs no cursor
+// empty one (e.g. a page number past the end), since that link needs no cursor.
 func (p *DelegationsPage) HasFirst() bool { return !p.isFirst }
 
-// HasNext reports whether older delegations follow this page
+// HasNext reports whether older delegations follow this page.
 func (p *DelegationsPage) HasNext() bool { return p.hasNext && len(p.Delegations) > 0 }
 
-// HasPrevious reports whether newer delegations precede this page
+// HasPrevious reports whether newer delegations precede this page.
 func (p *DelegationsPage) HasPrevious() bool { return p.hasPrevious && len(p.Delegations) > 0 }
 
-// NextCursor is where the next (older) page continues from; only meaningful when HasNext
+// NextCursor is where the next (older) page continues from; only meaningful when HasNext.
 func (p *DelegationsPage) NextCursor() Cursor {
 	return CursorOf(p.Delegations[len(p.Delegations)-1])
 }
 
-// PreviousCursor is where the previous (newer) page reads back from; only meaningful when HasPrevious
+// PreviousCursor is where the previous (newer) page reads back from; only meaningful when HasPrevious.
 func (p *DelegationsPage) PreviousCursor() Cursor {
 	return CursorOf(p.Delegations[0])
 }

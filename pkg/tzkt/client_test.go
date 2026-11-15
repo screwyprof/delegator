@@ -15,6 +15,8 @@ import (
 	"github.com/screwyprof/delegator/pkg/tzkt"
 )
 
+// GetDelegations builds the request TzKT expects (filters, limit, select, sort) and turns every
+// failure mode, from transport to status to body, into a distinct error.
 func TestTzktClientGetDelegations(t *testing.T) {
 	t.Parallel()
 
@@ -23,20 +25,20 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		expectedDelegations := []tzkt.Delegation{
-			createTestDelegation(
-				1098907648,
-				int64(109),
-				"2018-06-30T19:30:27Z",
-				"tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd",
-				25079312620,
-			),
-			createTestDelegation(
-				1649410048,
-				int64(167),
-				"2018-06-30T20:29:42Z",
-				"tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft",
-				10199999690,
-			),
+			createTestDelegation(t, delegationFixture{
+				ID:        1098907648,
+				Level:     109,
+				Timestamp: "2018-06-30T19:30:27Z",
+				Address:   "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd",
+				Amount:    25079312620,
+			}),
+			createTestDelegation(t, delegationFixture{
+				ID:        1649410048,
+				Level:     167,
+				Timestamp: "2018-06-30T20:29:42Z",
+				Address:   "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft",
+				Amount:    10199999690,
+			}),
 		}
 
 		server := httptest.NewServer(successHandler(t, expectedDelegations))
@@ -125,6 +127,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -144,6 +147,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -163,6 +167,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -184,6 +189,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -205,6 +211,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -224,6 +231,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -245,6 +253,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -264,6 +273,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -285,6 +295,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -304,6 +315,7 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		var requestURL string
+
 		server := newURLTrackingServer(t, &requestURL)
 		defer server.Close()
 
@@ -321,40 +333,46 @@ func TestTzktClientGetDelegations(t *testing.T) {
 	})
 }
 
-func createTestDelegation(id int64, level int64, timestamp, address string, amount int64) tzkt.Delegation {
-	parsedTime, _ := time.Parse(time.RFC3339, timestamp)
-	return tzkt.Delegation{
-		ID:        id,
-		Level:     level,
-		Timestamp: parsedTime,
-		Sender: struct {
-			Address string `json:"address"`
-		}{
-			Address: address,
-		},
-		Amount: amount,
-	}
+// delegationFixture names the fields of a TzKT delegation used as test data.
+type delegationFixture struct {
+	ID        int64
+	Level     int64
+	Timestamp string // RFC 3339
+	Address   string
+	Amount    int64
+}
+
+func createTestDelegation(t *testing.T, f delegationFixture) tzkt.Delegation {
+	t.Helper()
+
+	parsedTime, err := time.Parse(time.RFC3339, f.Timestamp)
+	require.NoError(t, err, "fixture timestamp must be RFC 3339")
+
+	d := tzkt.Delegation{ID: f.ID, Level: f.Level, Timestamp: parsedTime, Amount: f.Amount}
+	d.Sender.Address = f.Address
+
+	return d
 }
 
 func successHandler(t *testing.T, delegations []tzkt.Delegation) http.HandlerFunc {
 	t.Helper()
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
 		response, err := json.Marshal(delegations)
-		require.NoError(t, err, "Failed to marshal test data")
+		assert.NoError(t, err, "Failed to marshal test data")
 
 		_, err = w.Write(response)
-		require.NoError(t, err, "Failed to write response")
+		assert.NoError(t, err, "Failed to write response")
 	}
 }
 
 func newServerWithStatusCode(t *testing.T, statusCode int) *httptest.Server {
 	t.Helper()
 
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(statusCode)
 	}))
 }
@@ -362,11 +380,11 @@ func newServerWithStatusCode(t *testing.T, statusCode int) *httptest.Server {
 func newServerWithInvalidJSON(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(`{"invalid json": broken`))
-		require.NoError(t, err, "Failed to write malformed response")
+		assert.NoError(t, err, "Failed to write malformed response")
 	}))
 }
 
@@ -379,7 +397,7 @@ func newURLTrackingServer(t *testing.T, urlCapture *string) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(`[]`))
-		require.NoError(t, err, "Failed to write response")
+		assert.NoError(t, err, "Failed to write response")
 	}))
 }
 
@@ -389,7 +407,7 @@ func newClientWithServer(server *httptest.Server) *tzkt.Client {
 
 func assertAPIError(t *testing.T, err error, expectedError error, delegations []tzkt.Delegation) {
 	t.Helper()
-	assert.ErrorIs(t, err, expectedError)
+	require.ErrorIs(t, err, expectedError)
 	assert.Nil(t, delegations)
 }
 
@@ -432,7 +450,7 @@ func assertSelectParameterContainsAllRequiredFields(t *testing.T, err error, req
 
 // assertSortedByAscendingID checks the request pins TzKT's order rather than relying on its
 // default: with id.gt + limit, only ascending order returns the next contiguous batch, and
-// callers checkpoint on the last delegation's id
+// callers checkpoint on the last delegation's id.
 func assertSortedByAscendingID(t *testing.T, err error, requestURL string) {
 	t.Helper()
 	require.NoError(t, err)
@@ -451,6 +469,7 @@ func assertIDFilterNotPresent(t *testing.T, err error, requestURL string) {
 func assertIDFilterPresent(t *testing.T, err error, requestURL string, expectedID int64) {
 	t.Helper()
 	require.NoError(t, err)
+
 	expectedParam := fmt.Sprintf("id.gt=%d", expectedID)
 	assert.Contains(t, requestURL, expectedParam, "Expected continuation from ID %d", expectedID)
 }

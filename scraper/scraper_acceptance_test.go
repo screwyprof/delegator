@@ -41,13 +41,14 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		// Create separate connection for production code (connection isolation)
 		productionDB, err := pgxdb.NewConnection(t.Context(), testDB.Config().ConnString())
 		require.NoError(t, err)
+
 		defer productionDB.Close()
 
 		// Production code uses its own connection
 		store, storeCloser := pgxstore.New(productionDB)
 		defer storeCloser()
 
-		httpClient := &http.Client{Timeout: cfg.HttpClientTimeout}
+		httpClient := &http.Client{Timeout: cfg.HTTPClientTimeout}
 		client := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
 
 		service := createTestService(t, client, store, cfg)
@@ -62,7 +63,7 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 	})
 }
 
-// runScraperUntilPollingStarts executes the scraper and returns backfill results
+// runScraperUntilPollingStarts executes the scraper and returns backfill results.
 func runScraperUntilPollingStarts(
 	t *testing.T,
 	service *scraper.Service,
@@ -109,7 +110,7 @@ func runScraperUntilPollingStarts(
 	return backfillDone
 }
 
-// assertBackfillSucceeded verifies the backfill process completed successfully
+// assertBackfillSucceeded verifies the backfill process completed successfully.
 func assertBackfillSucceeded(t *testing.T, backfillResult scraper.BackfillDone) {
 	t.Helper()
 
@@ -122,95 +123,100 @@ func assertBackfillSucceeded(t *testing.T, backfillResult scraper.BackfillDone) 
 	assert.Positive(t, backfillResult.Duration, "Backfill should take measurable time")
 }
 
-// assertDataWasStoredCorrectly returns a verification function that captures dependencies
+// assertDataWasStoredCorrectly returns a verification function that captures dependencies.
 func assertDataWasStoredCorrectly(t *testing.T, testDB *pgxpool.Pool) func(scraper.BackfillDone, int64) {
 	t.Helper()
 
 	return func(backfillResult scraper.BackfillDone, startCheckpoint int64) {
-		ctx := t.Context()
-
 		if backfillResult.TotalProcessed == 0 {
 			t.Error(
 				"No delegations were processed - this may indicate checkpoint is too far in future or doesn't exist",
 			)
+
 			return
 		}
 
-		assertDatabaseCountMatchesBackfill(t, testDB, ctx, backfillResult.TotalProcessed)
-		assertCheckpointAdvanced(t, testDB, ctx, startCheckpoint)
-		assertFirstDelegationAfterCheckpoint(t, testDB, ctx, startCheckpoint)
-		assertLastDelegationMatchesCheckpoint(t, testDB, ctx)
-		assertTimestampsAreValid(t, testDB, ctx)
+		assertDatabaseCountMatchesBackfill(t, testDB, backfillResult.TotalProcessed)
+		assertCheckpointAdvanced(t, testDB, startCheckpoint)
+		assertFirstDelegationAfterCheckpoint(t, testDB, startCheckpoint)
+		assertLastDelegationMatchesCheckpoint(t, testDB)
+		assertTimestampsAreValid(t, testDB)
 	}
 }
 
-// assertDatabaseCountMatchesBackfill verifies database count matches event count
-func assertDatabaseCountMatchesBackfill(t *testing.T, testDB *pgxpool.Pool, ctx context.Context, backfillCount int64) {
+// assertDatabaseCountMatchesBackfill verifies database count matches event count.
+func assertDatabaseCountMatchesBackfill(t *testing.T, testDB *pgxpool.Pool, backfillCount int64) {
 	t.Helper()
 
 	var actualCount int64
-	err := testDB.QueryRow(ctx, "SELECT COUNT(*) FROM delegations").Scan(&actualCount)
+
+	err := testDB.QueryRow(t.Context(), "SELECT COUNT(*) FROM delegations").Scan(&actualCount)
 	require.NoError(t, err)
 	assert.Equal(t, backfillCount, actualCount, "Database count should match BackfillDone event count")
 }
 
-// assertCheckpointAdvanced verifies the checkpoint was updated beyond the starting point
-func assertCheckpointAdvanced(t *testing.T, testDB *pgxpool.Pool, ctx context.Context, startCheckpoint int64) {
+// assertCheckpointAdvanced verifies the checkpoint was updated beyond the starting point.
+func assertCheckpointAdvanced(t *testing.T, testDB *pgxpool.Pool, startCheckpoint int64) {
 	t.Helper()
 
 	var finalCheckpoint int64
-	err := testDB.QueryRow(ctx, "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&finalCheckpoint)
+
+	err := testDB.QueryRow(t.Context(), "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&finalCheckpoint)
 	require.NoError(t, err)
 	assert.Greater(t, finalCheckpoint, startCheckpoint, "Checkpoint should have advanced beyond starting point")
 }
 
-// assertFirstDelegationAfterCheckpoint verifies first delegation ID is greater than checkpoint
+// assertFirstDelegationAfterCheckpoint verifies first delegation ID is greater than checkpoint.
 func assertFirstDelegationAfterCheckpoint(
 	t *testing.T,
 	testDB *pgxpool.Pool,
-	ctx context.Context,
 	startCheckpoint int64,
 ) {
 	t.Helper()
 
 	var firstID int64
-	err := testDB.QueryRow(ctx, "SELECT id FROM delegations ORDER BY id ASC LIMIT 1").Scan(&firstID)
+
+	err := testDB.QueryRow(t.Context(), "SELECT id FROM delegations ORDER BY id ASC LIMIT 1").Scan(&firstID)
 	require.NoError(t, err)
 	assert.Greater(t, firstID, startCheckpoint, "First stored delegation should be after checkpoint")
 }
 
-// assertLastDelegationMatchesCheckpoint verifies last delegation ID matches final checkpoint
-func assertLastDelegationMatchesCheckpoint(t *testing.T, testDB *pgxpool.Pool, ctx context.Context) {
+// assertLastDelegationMatchesCheckpoint verifies last delegation ID matches final checkpoint.
+func assertLastDelegationMatchesCheckpoint(t *testing.T, testDB *pgxpool.Pool) {
 	t.Helper()
 
 	var lastID int64
-	err := testDB.QueryRow(ctx, "SELECT id FROM delegations ORDER BY id DESC LIMIT 1").Scan(&lastID)
+
+	err := testDB.QueryRow(t.Context(), "SELECT id FROM delegations ORDER BY id DESC LIMIT 1").Scan(&lastID)
 	require.NoError(t, err)
 
 	var finalCheckpoint int64
-	err = testDB.QueryRow(ctx, "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&finalCheckpoint)
+
+	err = testDB.QueryRow(t.Context(), "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&finalCheckpoint)
 	require.NoError(t, err)
 
 	assert.Equal(t, lastID, finalCheckpoint, "Last delegation ID should match final checkpoint")
 }
 
-// assertTimestampsAreValid verifies stored timestamps are valid
-func assertTimestampsAreValid(t *testing.T, testDB *pgxpool.Pool, ctx context.Context) {
+// assertTimestampsAreValid verifies stored timestamps are valid.
+func assertTimestampsAreValid(t *testing.T, testDB *pgxpool.Pool) {
 	t.Helper()
 
 	var firstTimestamp, lastTimestamp time.Time
 
-	err := testDB.QueryRow(ctx, "SELECT timestamp FROM delegations ORDER BY id ASC LIMIT 1").Scan(&firstTimestamp)
+	err := testDB.QueryRow(t.Context(), "SELECT timestamp FROM delegations ORDER BY id ASC LIMIT 1").
+		Scan(&firstTimestamp)
 	require.NoError(t, err)
 
-	err = testDB.QueryRow(ctx, "SELECT timestamp FROM delegations ORDER BY id DESC LIMIT 1").Scan(&lastTimestamp)
+	err = testDB.QueryRow(t.Context(), "SELECT timestamp FROM delegations ORDER BY id DESC LIMIT 1").
+		Scan(&lastTimestamp)
 	require.NoError(t, err)
 
 	assert.False(t, firstTimestamp.IsZero(), "First timestamp should not be zero")
 	assert.False(t, lastTimestamp.IsZero(), "Last timestamp should not be zero")
 }
 
-// createTestService creates a scraper service with test-optimized configuration
+// createTestService creates a scraper service with test-optimized configuration.
 func createTestService(t *testing.T, client *tzkt.Client, store *pgxstore.Store, cfg config.Config) *scraper.Service {
 	t.Helper()
 

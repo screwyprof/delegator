@@ -10,6 +10,7 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
+// Page 0 means the first page; any other number is taken as given.
 func TestParsePageFromUint64(t *testing.T) {
 	t.Parallel()
 
@@ -69,6 +70,7 @@ func TestParsePageFromUint64(t *testing.T) {
 	})
 }
 
+// per_page 0 means the default, and anything above MaxPerPage is rejected.
 func TestParsePerPageFromUint64(t *testing.T) {
 	t.Parallel()
 
@@ -163,8 +165,8 @@ func TestParsePerPageFromUint64(t *testing.T) {
 				perPage, err := tezos.ParsePerPageFromUint64(tc.input)
 
 				// Assert
-				assert.Error(t, err)
-				assert.ErrorIs(t, err, tezos.ErrPerPageTooLarge)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tezos.ErrPerPageTooLarge)
 				assert.Equal(t, tezos.PerPage(0), perPage, "Should return zero value on error")
 			})
 		}
@@ -209,11 +211,12 @@ func TestParsePerPageFromUint64(t *testing.T) {
 
 				// Assert
 				if tc.shouldError {
-					assert.Error(t, err)
-					assert.ErrorIs(t, err, tezos.ErrPerPageTooLarge)
+					require.Error(t, err)
+					require.ErrorIs(t, err, tezos.ErrPerPageTooLarge)
 					assert.Equal(t, tezos.PerPage(0), perPage)
 				} else {
 					require.NoError(t, err)
+
 					if tc.input == 0 {
 						assert.Equal(t, tezos.PerPage(tezos.DefaultPerPage), perPage)
 						assert.Equal(t, uint64(tezos.DefaultPerPage), perPage.Uint64())
@@ -227,6 +230,7 @@ func TestParsePerPageFromUint64(t *testing.T) {
 	})
 }
 
+// A Page converts back to the number it was made from.
 func TestPage_Uint64(t *testing.T) {
 	t.Parallel()
 
@@ -270,6 +274,7 @@ func TestPage_Uint64(t *testing.T) {
 	}
 }
 
+// A PerPage converts back to the number it was made from.
 func TestPerPage_Uint64(t *testing.T) {
 	t.Parallel()
 
@@ -313,6 +318,7 @@ func TestPerPage_Uint64(t *testing.T) {
 	}
 }
 
+// A page links to first, previous and next only where those pages exist, in either direction.
 func TestNewDelegationsPage(t *testing.T) {
 	t.Parallel()
 
@@ -426,6 +432,7 @@ func TestNewDelegationsPage(t *testing.T) {
 	}
 }
 
+// The next page continues after the oldest row shown, the previous before the newest.
 func TestDelegationsPage_Cursors(t *testing.T) {
 	t.Parallel()
 

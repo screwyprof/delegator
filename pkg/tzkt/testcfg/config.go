@@ -1,3 +1,4 @@
+// Package testcfg holds settings used only by the tzkt client's tests, read from TZKT_TEST_*.
 package testcfg
 
 import (
@@ -6,7 +7,7 @@ import (
 	env "github.com/caarlos0/env/v11"
 )
 
-// Config holds test-specific configuration for tzkt client acceptance tests
+// Config holds test-specific configuration for tzkt client acceptance tests.
 type Config struct {
 	Limit       uint64        `env:"TZKT_TEST_LIMIT"        envDefault:"5"`
 	Offset      uint64        `env:"TZKT_TEST_OFFSET"       envDefault:"100000"`
@@ -14,7 +15,7 @@ type Config struct {
 	BaseURL     string        `env:"TZKT_TEST_BASE_URL"     envDefault:"https://api.tzkt.io"`
 }
 
-// New loads test configuration from environment variables
+// New loads test configuration from environment variables.
 func New() Config {
 	return env.Must(env.ParseAs[Config]())
 }

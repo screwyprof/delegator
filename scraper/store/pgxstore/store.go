@@ -1,3 +1,5 @@
+// Package pgxstore is the scraper's PostgreSQL store: it saves delegation batches and the
+// checkpoint atomically.
 package pgxstore
 
 import (
@@ -12,7 +14,7 @@ import (
 	"github.com/screwyprof/delegator/scraper/store/dbrow"
 )
 
-// Sentinel errors for store operations
+// Sentinel errors for store operations.
 var (
 	ErrTransactionFailed     = errors.New("transaction failed")
 	ErrTempTableFailed       = errors.New("temporary table operation failed")
@@ -22,36 +24,40 @@ var (
 	ErrLastProcessedIDFailed = errors.New("failed to get last processed ID")
 )
 
-// Store implements scraper.Store interface using pgx
+// Store implements scraper.Store interface using pgx.
 type Store struct {
 	pool *pgxpool.Pool
 }
 
 // New creates a new PostgreSQL store with an existing connection pool
-// Returns the store and a closer function
+// Returns the store and a closer function.
 func New(pool *pgxpool.Pool) (*Store, func()) {
 	store := &Store{pool: pool}
 	closer := func() {
 		pool.Close()
 	}
+
 	return store, closer
 }
 
-// LastProcessedID returns the last processed delegation ID (checkpoint)
+// LastProcessedID returns the last processed delegation ID (checkpoint).
 func (s *Store) LastProcessedID(ctx context.Context) (int64, error) {
 	var lastID int64
+
 	err := s.pool.QueryRow(ctx, "SELECT COALESCE(last_id, 0) FROM scraper_checkpoint").Scan(&lastID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
+
 	if err != nil {
 		return 0, fmt.Errorf("%w: %w", ErrLastProcessedIDFailed, err)
 	}
+
 	return lastID, nil
 }
 
 // SaveBatch saves a batch of delegations using pgx CopyFrom for maximum performance
-// Uses a temporary table approach to handle duplicate detection efficiently
+// Uses a temporary table approach to handle duplicate detection efficiently.
 func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation) error {
 	if len(delegations) == 0 {
 		return nil
@@ -66,19 +72,19 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // No-op if commit succeeds
 
-	if err := s.createTempTable(ctx, tx); err != nil {
+	if err = s.createTempTable(ctx, tx); err != nil {
 		return err
 	}
 
-	if err := s.bulkCopyToTemp(ctx, tx, rows); err != nil {
+	if err = s.bulkCopyToTemp(ctx, tx, rows); err != nil {
 		return err
 	}
 
-	if err := s.insertFromTempToMain(ctx, tx); err != nil {
+	if err = s.insertFromTempToMain(ctx, tx); err != nil {
 		return err
 	}
 
-	if err := s.updateCheckpoint(ctx, tx, delegations); err != nil {
+	if err = s.updateCheckpoint(ctx, tx, delegations); err != nil {
 		return err
 	}
 
@@ -89,7 +95,7 @@ func (s *Store) SaveBatch(ctx context.Context, delegations []scraper.Delegation)
 	return nil
 }
 
-// createTempTable creates a temporary table for bulk operations
+// createTempTable creates a temporary table for bulk operations.
 func (s *Store) createTempTable(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(ctx, `
 		CREATE TEMPORARY TABLE temp_delegations (
@@ -104,10 +110,11 @@ func (s *Store) createTempTable(ctx context.Context, tx pgx.Tx) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrTempTableFailed, err)
 	}
+
 	return nil
 }
 
-// bulkCopyToTemp performs bulk insert into temporary table using CopyFrom
+// bulkCopyToTemp performs bulk insert into temporary table using CopyFrom.
 func (s *Store) bulkCopyToTemp(ctx context.Context, tx pgx.Tx, rows [][]any) error {
 	_, err := tx.CopyFrom(
 		ctx,
@@ -118,10 +125,11 @@ func (s *Store) bulkCopyToTemp(ctx context.Context, tx pgx.Tx, rows [][]any) err
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCopyFailed, err)
 	}
+
 	return nil
 }
 
-// insertFromTempToMain transfers data from temporary table to main table with conflict resolution
+// insertFromTempToMain transfers data from temporary table to main table with conflict resolution.
 func (s *Store) insertFromTempToMain(ctx context.Context, tx pgx.Tx) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO delegations (id, timestamp, amount, delegator, level, year)
@@ -132,10 +140,11 @@ func (s *Store) insertFromTempToMain(ctx context.Context, tx pgx.Tx) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInsertFailed, err)
 	}
+
 	return nil
 }
 
-// updateCheckpoint updates the scraper checkpoint with the highest delegation ID
+// updateCheckpoint updates the scraper checkpoint with the highest delegation ID.
 func (s *Store) updateCheckpoint(ctx context.Context, tx pgx.Tx, delegations []scraper.Delegation) error {
 	// Since delegations are sorted by ID, the last one has the highest ID
 	checkpointID := delegations[len(delegations)-1].ID
@@ -147,5 +156,6 @@ func (s *Store) updateCheckpoint(ctx context.Context, tx pgx.Tx, delegations []s
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCheckpointFailed, err)
 	}
+
 	return nil
 }

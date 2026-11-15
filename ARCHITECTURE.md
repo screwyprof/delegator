@@ -259,7 +259,7 @@ All services use environment variables for configuration following 12-factor app
 - **Docker**: Containerization and local development
 
 ### 7.3 Development Tools
-- **Quality**: golangci-lint, gofumpt, race detector
+- **Quality**: golangci-lint with a strict linter set (adopted from prettycov), pinned in the Makefile; depguard rules in `.golangci.yml` enforce the layering (domain packages free of storage/transport, config packages dependency-free, shared `pkg/` never importing a service, migrator never importing scraper/web); gofumpt, gci and golines formatting; pre-commit hooks; race detector
 - **Testing**: Acceptance tests with real external dependencies
 - **Automation**: Makefile-driven development workflow
 - **Development environment**: Nix flakes for reproducible toolchain

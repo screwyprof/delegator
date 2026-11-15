@@ -14,6 +14,7 @@ import (
 	"github.com/screwyprof/delegator/pkg/tzkt/testcfg"
 )
 
+// The client talks to the real TzKT API and decodes its delegations into well-formed values.
 func TestTzktClientRealAPI(t *testing.T) {
 	t.Parallel()
 
@@ -45,16 +46,15 @@ func TestTzktClientRealAPI(t *testing.T) {
 	// Verify each delegation has required fields with valid data
 	for i, delegation := range delegations {
 		// Basic format validation
-		assert.Greater(t, delegation.Level, int64(0), "Delegation %d should have valid block level", i)
+		assert.Positive(t, delegation.Level, "Delegation %d should have valid block level", i)
 		assert.False(t, delegation.Timestamp.IsZero(), "Delegation %d should have valid timestamp", i)
 		assert.NotEmpty(t, delegation.Sender.Address, "Delegation %d should have sender address", i)
 		assert.GreaterOrEqual(t, delegation.Amount, int64(0), "Delegation %d should have non-negative amount", i)
 		assert.Contains(t, delegation.Sender.Address, "tz", "Delegation %d sender should be Tezos address", i)
 
-		// Verify timestamp is parseable to RFC3339 (proves it came from valid JSON)
+		// A zero time means the API's timestamp was missing or failed to decode.
+		assert.False(t, delegation.Timestamp.IsZero(), "Delegation %d should have a decoded timestamp", i)
 		timestampStr := delegation.Timestamp.Format(time.RFC3339)
-		_, err := time.Parse(time.RFC3339, timestampStr)
-		assert.NoError(t, err, "Delegation %d timestamp should be valid RFC3339: %s", i, timestampStr)
 
 		t.Logf("Delegation %d: ID=%d, Level=%d, Amount=%d, Sender=%s, Timestamp=%s",
 			i, delegation.ID, delegation.Level, delegation.Amount, delegation.Sender.Address, timestampStr)

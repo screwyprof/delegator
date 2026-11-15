@@ -15,7 +15,7 @@ import (
 	"github.com/screwyprof/delegator/scraper"
 )
 
-// TestServiceBackfillBehavior tests core backfill business logic
+// TestServiceBackfillBehavior tests core backfill business logic.
 func TestServiceBackfillBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -24,11 +24,12 @@ func TestServiceBackfillBehavior(t *testing.T) {
 
 		// Arrange
 		expectedDelegations := []tzkt.Delegation{delegation(1), delegation(2)}
+
 		server := apiWithDelegations(expectedDelegations...)
 		defer server.Close()
 
 		savedBatchesCh, store := storeCapturingBatches()
-		svc := scraperWithChunkSize(1)(server, store)
+		svc := scraperOneDelegationPerBatch()(server, store)
 
 		// Act
 		done := runBackfillUntilComplete(t, svc)
@@ -44,11 +45,12 @@ func TestServiceBackfillBehavior(t *testing.T) {
 
 		// Arrange
 		expectedDelegation := delegation(5)
+
 		server := apiWithDelegations(expectedDelegation)
 		defer server.Close()
 
 		_, store := storeCapturingBatches()
-		svc := scraperWithChunkSize(1)(server, store)
+		svc := scraperOneDelegationPerBatch()(server, store)
 
 		// Act
 		done := runBackfillUntilComplete(t, svc)
@@ -63,11 +65,12 @@ func TestServiceBackfillBehavior(t *testing.T) {
 
 		// Arrange
 		expectedDelegations := []tzkt.Delegation{delegation(1), delegation(2), delegation(3)}
+
 		server := apiWithDelegations(expectedDelegations...)
 		defer server.Close()
 
 		savedBatchesCh, store := storeCapturingBatches()
-		svc := scraperWithChunkSize(1)(server, store)
+		svc := scraperOneDelegationPerBatch()(server, store)
 
 		// Act
 		done := runBackfillUntilComplete(t, svc)
@@ -86,7 +89,7 @@ func TestServiceBackfillBehavior(t *testing.T) {
 		defer server.Close()
 
 		_, store := storeCapturingBatches()
-		svc := scraperWithChunkSize(1)(server, store)
+		svc := scraperOneDelegationPerBatch()(server, store)
 
 		// Act
 		errorCh := runBackfillExpectingError(t, svc)
@@ -96,7 +99,7 @@ func TestServiceBackfillBehavior(t *testing.T) {
 	})
 }
 
-// TestServicePollingBehavior tests core polling business logic
+// TestServicePollingBehavior tests core polling business logic.
 func TestServicePollingBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -154,7 +157,7 @@ func TestServicePollingBehavior(t *testing.T) {
 	})
 }
 
-// TestServiceEventEmission tests observability and event emission
+// TestServiceEventEmission tests observability and event emission.
 func TestServiceEventEmission(t *testing.T) {
 	t.Parallel()
 
@@ -166,7 +169,7 @@ func TestServiceEventEmission(t *testing.T) {
 		defer server.Close()
 
 		store := storeWithCheckpoint(0)
-		svc := scraperWithChunkSize(1)(server, store)
+		svc := scraperOneDelegationPerBatch()(server, store)
 
 		// Act
 		events := runBackfillCapturingEvents(t, svc)
@@ -203,10 +206,10 @@ func TestServiceEventEmission(t *testing.T) {
 		defer server.Close()
 
 		store := storeWithCheckpoint(0)
-		clock, svc := clockControlledPolling(server, store)
+		_, svc := clockControlledPolling(server, store) // a clock that never ticks: shutdown, not a poll
 
 		// Act
-		shutdown := runPollingCapturingShutdown(t, svc, clock)
+		shutdown := runPollingCapturingShutdown(t, svc)
 
 		// Assert
 		assertShutdownEventOccurred(t, shutdown)
@@ -214,11 +217,6 @@ func TestServiceEventEmission(t *testing.T) {
 }
 
 // Test data helpers
-
-func createDelegationJSON(id int64, timestamp string, amount int64, address string, level int64) string {
-	return fmt.Sprintf(`[{"id":%d,"timestamp":"%s","amount":%d,"sender":{"address":"%s"},"level":%d}]`,
-		id, timestamp, amount, address, level)
-}
 
 func emptyResponse() string {
 	return `[]`
@@ -233,7 +231,10 @@ func emptyPoll() string {
 }
 
 func pollWithDelegation(id int64) string {
-	return createDelegationJSON(id, "2024-01-01T00:00:00Z", 1000000, "tz1abc", 100)
+	return fmt.Sprintf(
+		`[{"id":%d,"timestamp":"2024-01-01T00:00:00Z","amount":1000000,"sender":{"address":"tz1abc"},"level":100}]`,
+		id,
+	)
 }
 
 // Test setup helpers
@@ -253,19 +254,24 @@ func apiWithDelegations(delegations ...tzkt.Delegation) *httptest.Server {
 				d.ID, d.Timestamp.Format(time.RFC3339), d.Amount, d.Sender.Address, d.Level),
 		)
 	}
+
 	responses = append(responses, endOfBackfill())
+
 	return createTestServer(responses)
 }
 
 func apiWithPollingResponses(pollResponses ...string) *httptest.Server {
-	responses := []string{endOfBackfill()}
+	responses := make([]string, 0, 1+len(pollResponses))
+	responses = append(responses, endOfBackfill())
 	responses = append(responses, pollResponses...)
+
 	return createTestServer(responses)
 }
 
 func apiWithPollingErrors() *httptest.Server {
 	callCount := 0
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		callCount++
 		if callCount == 1 {
 			// First call (backfill) succeeds with empty response
@@ -290,18 +296,21 @@ func delegation(id int64) tzkt.Delegation {
 		ID:        id,
 		Timestamp: timestamp,
 		Amount:    1000000 + id*100000,
-		Level:     int64(100 + id),
+		Level:     100 + id,
 	}
 	d.Sender.Address = fmt.Sprintf("tz1%03d", id)
+
 	return d
 }
 
 func storeCapturingBatches() (chan []scraper.Delegation, *mockStore) {
 	savedBatchesCh := make(chan []scraper.Delegation, 10)
-	store := createTestStore(0, func(ctx context.Context, batch []scraper.Delegation) error {
+	store := createTestStore(0, func(_ context.Context, batch []scraper.Delegation) error {
 		savedBatchesCh <- batch
+
 		return nil
 	})
+
 	return savedBatchesCh, store
 }
 
@@ -309,10 +318,11 @@ func storeWithCheckpoint(checkpointID int64) *mockStore {
 	return createTestStore(checkpointID, nil)
 }
 
-func scraperWithChunkSize(chunkSize uint64) func(*httptest.Server, *mockStore) *scraper.Service {
+func scraperOneDelegationPerBatch() func(*httptest.Server, *mockStore) *scraper.Service {
 	return func(server *httptest.Server, store *mockStore) *scraper.Service {
 		client := tzkt.NewClient(http.DefaultClient, server.URL)
-		return scraper.NewService(client, store, scraper.WithChunkSize(chunkSize))
+
+		return scraper.NewService(client, store, scraper.WithChunkSize(1))
 	}
 }
 
@@ -324,6 +334,7 @@ func clockControlledPolling(server *httptest.Server, store *mockStore) (*fakeClo
 		scraper.WithPollInterval(1*time.Millisecond),
 		scraper.WithChunkSize(1),
 	)
+
 	return clock, svc
 }
 
@@ -339,6 +350,7 @@ func assertDelegationsWereSaved(t *testing.T, savedBatchesCh chan []scraper.Dele
 	}
 
 	require.Len(t, allSaved, len(expected), "Expected %d delegations to be saved", len(expected))
+
 	for i, expectedDel := range expected {
 		assert.Equal(t, expectedDel.ID, allSaved[i].ID, "Delegation %d should have ID %d", i, expectedDel.ID)
 		assert.Equal(
@@ -383,20 +395,22 @@ func assertEmptyPollOccurred(t *testing.T, cycle scraper.PollingSyncCompleted) {
 func assertPollFoundDelegations(t *testing.T, cycle scraper.PollingSyncCompleted, expectedCount int) {
 	t.Helper()
 	assert.Equal(t, expectedCount, cycle.Fetched, "Expected poll to fetch %d delegations", expectedCount)
-	assert.Greater(t, cycle.CheckpointID, int64(0), "Expected valid checkpoint ID")
+	assert.Positive(t, cycle.CheckpointID, "Expected valid checkpoint ID")
 }
 
 func assertBackfillFailedWithAPIError(t *testing.T, errorCh <-chan error) {
 	t.Helper()
+
 	backfillError := <-errorCh
-	require.NotNil(t, backfillError, "Expected backfill to fail with an error")
+	require.Error(t, backfillError, "Expected backfill to fail with an error")
 	assert.ErrorIs(t, backfillError, scraper.ErrAPIRequestFailed, "Error should be an API request failure")
 }
 
 func assertPollingFailedWithAPIError(t *testing.T, errorCh <-chan error) {
 	t.Helper()
+
 	pollingError := <-errorCh
-	require.NotNil(t, pollingError, "Expected polling to fail with an error")
+	require.Error(t, pollingError, "Expected polling to fail with an error")
 	assert.ErrorIs(t, pollingError, scraper.ErrAPIRequestFailed, "Error should be an API request failure")
 }
 
@@ -407,7 +421,7 @@ func runBackfillUntilComplete(t *testing.T, svc *scraper.Service) <-chan struct{
 	events, done := svc.Start(ctx)
 
 	subCloser := scraper.NewSubscriber(events,
-		scraper.OnBackfillDone(func(e scraper.BackfillDone) { cancel() }),
+		scraper.OnBackfillDone(func(scraper.BackfillDone) { cancel() }),
 	)
 
 	t.Cleanup(func() {
@@ -428,6 +442,7 @@ func runBackfillExpectingError(t *testing.T, svc *scraper.Service) <-chan error 
 	subCloser := scraper.NewSubscriber(events,
 		scraper.OnBackfillError(func(e scraper.BackfillError) {
 			errorCh <- e.Err
+
 			cancel()
 		}),
 	)
@@ -458,6 +473,7 @@ func runPollingCycles(
 	subCloser := scraper.NewSubscriber(events,
 		scraper.OnPollingSyncCompleted(func(e scraper.PollingSyncCompleted) {
 			pollCyclesCh <- e
+
 			cyclesReceived++
 			if cyclesReceived == cycleCount {
 				close(pollCyclesCh)
@@ -496,6 +512,7 @@ func runPollingExpectingError(t *testing.T, svc *scraper.Service, clock *fakeClo
 	subCloser := scraper.NewSubscriber(events,
 		scraper.OnPollingError(func(e scraper.PollingError) {
 			errorCh <- e.Err
+
 			cancel()
 		}),
 	)
@@ -514,7 +531,8 @@ func runPollingExpectingError(t *testing.T, svc *scraper.Service, clock *fakeClo
 
 func createTestServer(responses []string) *httptest.Server {
 	callCount := 0
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if callCount < len(responses) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(responses[callCount]))
@@ -526,7 +544,7 @@ func createTestServer(responses []string) *httptest.Server {
 }
 
 func createErrorServer() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error": "server error"}`))
 	}))
@@ -541,7 +559,7 @@ func createTestStore(lastID int64, onSave func(ctx context.Context, batch []scra
 
 // Mock implementations
 
-// fakeClock implements Clock interface for deterministic testing
+// fakeClock implements Clock interface for deterministic testing.
 type fakeClock struct {
 	tick chan time.Time
 }
@@ -554,13 +572,13 @@ func (f *fakeClock) Now() time.Time {
 	return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 }
 
-// mockStore implements Store interface for testing
+// mockStore implements Store interface for testing.
 type mockStore struct {
 	lastID int64
 	onSave func(ctx context.Context, batch []scraper.Delegation) error
 }
 
-func (m *mockStore) LastProcessedID(ctx context.Context) (int64, error) {
+func (m *mockStore) LastProcessedID(_ context.Context) (int64, error) {
 	return m.lastID, nil
 }
 
@@ -570,6 +588,7 @@ func (m *mockStore) SaveBatch(ctx context.Context, batch []scraper.Delegation) e
 		if err == nil && len(batch) > 0 {
 			m.lastID = batch[len(batch)-1].ID
 		}
+
 		return err
 	}
 
@@ -612,6 +631,7 @@ func runBackfillCapturingEvents(t *testing.T, svc *scraper.Service) capturedBack
 		scraper.OnBackfillSyncCompleted(func(e scraper.BackfillSyncCompleted) { backfillSyncCompletedCh <- e }),
 		scraper.OnBackfillDone(func(e scraper.BackfillDone) {
 			backfillDoneCh <- e
+
 			cancel()
 		}),
 	)
@@ -625,6 +645,7 @@ func runBackfillCapturingEvents(t *testing.T, svc *scraper.Service) capturedBack
 
 	// Collect all sync completed events
 	close(backfillSyncCompletedCh)
+
 	var syncCompleted []scraper.BackfillSyncCompleted
 	for event := range backfillSyncCompletedCh {
 		syncCompleted = append(syncCompleted, event)
@@ -650,6 +671,7 @@ func runPollingCapturingEvents(t *testing.T, svc *scraper.Service, clock *fakeCl
 		scraper.OnPollingStarted(func(e scraper.PollingStarted) { pollingStartedCh <- e }),
 		scraper.OnPollingSyncCompleted(func(e scraper.PollingSyncCompleted) {
 			pollingCycleCh <- e
+
 			cancel()
 		}),
 	)
@@ -669,7 +691,7 @@ func runPollingCapturingEvents(t *testing.T, svc *scraper.Service, clock *fakeCl
 	}
 }
 
-func runPollingCapturingShutdown(t *testing.T, svc *scraper.Service, clock *fakeClock) scraper.PollingShutdown {
+func runPollingCapturingShutdown(t *testing.T, svc *scraper.Service) scraper.PollingShutdown {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -678,7 +700,7 @@ func runPollingCapturingShutdown(t *testing.T, svc *scraper.Service, clock *fake
 	shutdownCh := make(chan scraper.PollingShutdown, 1)
 
 	subCloser := scraper.NewSubscriber(events,
-		scraper.OnPollingStarted(func(e scraper.PollingStarted) {
+		scraper.OnPollingStarted(func(scraper.PollingStarted) {
 			// Once polling starts, cancel to trigger shutdown
 			cancel()
 		}),
@@ -698,6 +720,7 @@ func runPollingCapturingShutdown(t *testing.T, svc *scraper.Service, clock *fake
 		return shutdown
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Expected shutdown event was not received")
+
 		return scraper.PollingShutdown{} // unreachable
 	}
 }
@@ -713,9 +736,9 @@ func assertBackfillSyncCompletedEvents(t *testing.T, events []scraper.BackfillSy
 	assert.Len(t, events, expectedCount, "Should emit %d BackfillSyncCompleted events", expectedCount)
 
 	for i, event := range events {
-		assert.Greater(t, event.Fetched, 0, "Sync event %d should have fetched some records", i)
+		assert.Positive(t, event.Fetched, "Sync event %d should have fetched some records", i)
 		assert.GreaterOrEqual(t, event.CheckpointID, int64(0), "Sync event %d should have a valid checkpoint ID", i)
-		assert.Greater(t, event.ChunkSize, uint64(0), "Sync event %d should have a valid chunk size", i)
+		assert.Positive(t, event.ChunkSize, "Sync event %d should have a valid chunk size", i)
 	}
 }
 
@@ -728,7 +751,7 @@ func assertBackfillDoneEvent(t *testing.T, event scraper.BackfillDone, expectedT
 		"Backfill should process %d delegations",
 		expectedTotalProcessed,
 	)
-	assert.True(t, event.Duration > 0, "Backfill duration should be positive")
+	assert.Positive(t, event.Duration, "Backfill duration should be positive")
 }
 
 func assertPollingStartedEvent(t *testing.T, event scraper.PollingStarted) {

@@ -1,3 +1,4 @@
+// Package tzkt is a minimal client for the TzKT API's delegation operations.
 package tzkt
 
 import (
@@ -12,21 +13,21 @@ import (
 	"time"
 )
 
-// Internal API constants
+// Internal API constants.
 const (
 	defaultLimit     = 100
 	delegationsPath  = "/v1/operations/delegations"
 	queryParamLimit  = "limit"
 	queryParamSelect = "select"
 	// Pin ascending id order instead of relying on TzKT's default: with id.gt + limit only
-	// ascending order returns the next contiguous batch, and callers checkpoint on the last id
+	// ascending order returns the next contiguous batch, and callers checkpoint on the last id.
 	queryParamSortAsc = "sort.asc"
 	sortByID          = "id"
-	// Select only necessary fields to minimize payload
+	// Select only necessary fields to minimize payload.
 	defaultSelectFields = "id,timestamp,amount,sender,level"
 )
 
-// Sentinel errors for different failure modes
+// Sentinel errors for different failure modes.
 var (
 	ErrMalformedRequest      = errors.New("malformed request")
 	ErrHTTPRequestFailed     = errors.New("http request failed")
@@ -34,13 +35,13 @@ var (
 	ErrMalformedResponseBody = errors.New("malformed response body")
 )
 
-// Client represents a Tzkt API client
+// Client represents a Tzkt API client.
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
 }
 
-// NewClient creates a new Tzkt API client with explicit dependencies
+// NewClient creates a new Tzkt API client with explicit dependencies.
 func NewClient(httpClient *http.Client, baseURL string) *Client {
 	return &Client{
 		httpClient: httpClient,
@@ -48,7 +49,7 @@ func NewClient(httpClient *http.Client, baseURL string) *Client {
 	}
 }
 
-// DelegationsRequest represents parameters for getting delegations with filtering
+// DelegationsRequest represents parameters for getting delegations with filtering.
 type DelegationsRequest struct {
 	Limit         uint64
 	Offset        uint64     // offset pagination
@@ -56,7 +57,7 @@ type DelegationsRequest struct {
 	TimestampGE   *time.Time // timestamp.ge filter
 }
 
-// Delegation represents a Tezos delegation from Tzkt API
+// Delegation represents a Tezos delegation from Tzkt API.
 type Delegation struct {
 	ID        int64     `json:"id"`
 	Level     int64     `json:"level"`
@@ -67,7 +68,7 @@ type Delegation struct {
 	Amount int64 `json:"amount"`
 }
 
-// GetDelegations retrieves delegations from the Tzkt API with filtering support
+// GetDelegations retrieves delegations from the Tzkt API with filtering support.
 func (c *Client) GetDelegations(ctx context.Context, req DelegationsRequest) ([]Delegation, error) {
 	req.Limit = effectiveLimit(req.Limit)
 
@@ -102,6 +103,7 @@ func effectiveLimit(limit uint64) uint64 {
 	if limit == 0 {
 		return defaultLimit
 	}
+
 	return limit
 }
 
@@ -118,7 +120,7 @@ func (c *Client) buildRequest(ctx context.Context, req DelegationsRequest) (*htt
 
 func (c *Client) buildDelegationsURL(req DelegationsRequest) string {
 	params := url.Values{}
-	params.Set(queryParamLimit, strconv.FormatUint(uint64(req.Limit), 10))
+	params.Set(queryParamLimit, strconv.FormatUint(req.Limit, 10))
 	params.Set(queryParamSelect, defaultSelectFields)
 	params.Set(queryParamSortAsc, sortByID)
 
@@ -126,13 +128,14 @@ func (c *Client) buildDelegationsURL(req DelegationsRequest) string {
 	if req.IDGreaterThan != nil {
 		params.Set("id.gt", strconv.FormatInt(*req.IDGreaterThan, 10))
 	}
+
 	if req.TimestampGE != nil {
 		params.Set("timestamp.ge", req.TimestampGE.Format(time.RFC3339))
 	}
 
 	// Add offset pagination if specified
 	if req.Offset > 0 {
-		params.Set("offset", strconv.FormatUint(uint64(req.Offset), 10))
+		params.Set("offset", strconv.FormatUint(req.Offset, 10))
 	}
 
 	return fmt.Sprintf("%s%s?%s", c.baseURL, delegationsPath, params.Encode())

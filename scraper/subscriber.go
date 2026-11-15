@@ -13,42 +13,42 @@ type Subscriber struct {
 	pollingErrorHandler    func(PollingError)
 }
 
-// OnBackfillDone sets the handler for BackfillDone events
+// OnBackfillDone sets the handler for BackfillDone events.
 func OnBackfillDone(fn func(BackfillDone)) func(*Subscriber) {
 	return func(s *Subscriber) { s.backfillHandler = fn }
 }
 
-// OnBackfillStarted sets the handler for BackfillStarted events
+// OnBackfillStarted sets the handler for BackfillStarted events.
 func OnBackfillStarted(fn func(BackfillStarted)) func(*Subscriber) {
 	return func(s *Subscriber) { s.backfillStartedHandler = fn }
 }
 
-// OnBackfillSyncCompleted sets the handler for BackfillSyncCompleted events
+// OnBackfillSyncCompleted sets the handler for BackfillSyncCompleted events.
 func OnBackfillSyncCompleted(fn func(BackfillSyncCompleted)) func(*Subscriber) {
 	return func(s *Subscriber) { s.backfillSyncHandler = fn }
 }
 
-// OnBackfillError sets the handler for BackfillError events
+// OnBackfillError sets the handler for BackfillError events.
 func OnBackfillError(fn func(BackfillError)) func(*Subscriber) {
 	return func(s *Subscriber) { s.backfillErrorHandler = fn }
 }
 
-// OnPollingSyncCompleted sets the handler for PollingSyncCompleted events
+// OnPollingSyncCompleted sets the handler for PollingSyncCompleted events.
 func OnPollingSyncCompleted(fn func(PollingSyncCompleted)) func(*Subscriber) {
 	return func(s *Subscriber) { s.pollingSyncHandler = fn }
 }
 
-// OnPollingStarted sets the handler for PollingStarted events
+// OnPollingStarted sets the handler for PollingStarted events.
 func OnPollingStarted(fn func(PollingStarted)) func(*Subscriber) {
 	return func(s *Subscriber) { s.pollStartedHandler = fn }
 }
 
-// OnPollingShutdown sets the handler for PollingShutdown events
+// OnPollingShutdown sets the handler for PollingShutdown events.
 func OnPollingShutdown(fn func(PollingShutdown)) func(*Subscriber) {
 	return func(s *Subscriber) { s.pollShutdownHandler = fn }
 }
 
-// OnPollingError sets the handler for PollingError events
+// OnPollingError sets the handler for PollingError events.
 func OnPollingError(fn func(PollingError)) func(*Subscriber) {
 	return func(s *Subscriber) { s.pollingErrorHandler = fn }
 }
@@ -90,29 +90,35 @@ func NewSubscriber(events <-chan Event, opts ...func(*Subscriber)) func() {
 	// Start the dispatch loop immediately
 	go func() {
 		defer close(s.done)
+
 		for ev := range events {
-			switch e := ev.(type) {
-			case BackfillStarted:
-				s.backfillStartedHandler(e)
-			case BackfillSyncCompleted:
-				s.backfillSyncHandler(e)
-			case BackfillDone:
-				s.backfillHandler(e)
-			case BackfillError:
-				s.backfillErrorHandler(e)
-			case PollingStarted:
-				s.pollStartedHandler(e)
-			case PollingSyncCompleted:
-				s.pollingSyncHandler(e)
-			case PollingShutdown:
-				s.pollShutdownHandler(e)
-			case PollingError:
-				s.pollingErrorHandler(e)
-			}
+			s.dispatch(ev)
 		}
 	}()
 
 	return func() {
 		<-s.done
+	}
+}
+
+// dispatch routes one event to the handler registered for its type.
+func (s *Subscriber) dispatch(ev Event) {
+	switch e := ev.(type) {
+	case BackfillStarted:
+		s.backfillStartedHandler(e)
+	case BackfillSyncCompleted:
+		s.backfillSyncHandler(e)
+	case BackfillDone:
+		s.backfillHandler(e)
+	case BackfillError:
+		s.backfillErrorHandler(e)
+	case PollingStarted:
+		s.pollStartedHandler(e)
+	case PollingSyncCompleted:
+		s.pollingSyncHandler(e)
+	case PollingShutdown:
+		s.pollShutdownHandler(e)
+	case PollingError:
+		s.pollingErrorHandler(e)
 	}
 }

@@ -2,19 +2,253 @@
 version: "2"
 
 run:
-  # The acceptance test files are behind //go:build acceptance, and web's root package contains
-  # nothing else; without this the linters never see them.
+  # Acceptance tests are behind //go:build acceptance, and web's root package holds nothing else;
+  # without this the linters never see them.
   build-tags:
     - acceptance
   modules-download-mode: readonly
 linters:
+  default: none
   enable:
+    - bidichk
+    - asciicheck
+    - copyloopvar
+    - cyclop
+    - depguard
+    - dogsled
+    - dupword
+    - dupl
+    - embeddedstructfieldcheck
+    - err113
+    - errcheck
+    - errname
+    - errorlint
+    - exptostd
+    - exhaustive
+    - forbidigo
+    - forcetypeassert
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goheader
+    - gomoddirectives
+    - gomodguard_v2
+    - godoclint
+    - goprintffuncname
+    - gosec
+    - govet
+    - iface
+    - importas
+    - intrange
+    - ineffassign
+    - lll
+    - makezero
+    - misspell
+    - modernize
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - nlreturn
     - nolintlint
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - predeclared
+    - revive
+    - recvcheck
+    - staticcheck
+    - tagliatelle
+    - testableexamples
+    - testifylint
+    - testpackage
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - unused
+    - usetesting
+    - wastedassign
+    - whitespace
+    - wrapcheck
+    - wsl_v5
   settings:
+    # The layering, enforced rather than reviewed. Domain packages don't know about storage or
+    # transport; config packages stay dependency-free; shared pkg/ libraries never reach into a
+    # service; and migrator stays free of scraper and web, so the module cycle that once ran
+    # through SeededMigrator can't come back. Tests are exempt: acceptance tests wire it all.
+    depguard:
+      rules:
+        domain:
+          files:
+            - "**/web/tezos/*.go"
+            - "**/scraper/*.go"
+            - "!**/cmd/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: the domain does not know how it is stored
+            - pkg: net/http
+              desc: the domain does not know how it is served
+            - pkg: github.com/screwyprof/delegator/web/api
+              desc: transport types depend on the domain, not the other way round
+            - pkg: github.com/screwyprof/delegator/web/handler
+              desc: the domain does not depend on its HTTP adapter
+            - pkg: github.com/screwyprof/delegator/web/store
+              desc: the domain does not depend on its storage adapter
+            - pkg: github.com/screwyprof/delegator/scraper/store
+              desc: the domain does not depend on its storage adapter
+            - pkg: github.com/screwyprof/delegator/scraper/config
+              desc: the domain is configured through options, not by reading config
+        config:
+          files:
+            - "**/config/*.go"
+            - "**/testcfg/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/screwyprof/delegator
+              desc: config packages are leaves; they only read the environment
+            - pkg: github.com/jackc/pgx
+              desc: config packages are leaves; they only read the environment
+        shared:
+          files:
+            - "**/pkg/*/*.go"
+            - "**/pkg/**/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/screwyprof/delegator/scraper
+              desc: shared libraries must not depend on a service
+            - pkg: github.com/screwyprof/delegator/web
+              desc: shared libraries must not depend on a service
+            - pkg: github.com/screwyprof/delegator/migrator
+              desc: shared libraries must not depend on a service
+        migrator:
+          files:
+            - "**/migrator/*.go"
+            - "**/migrator/**/*.go"
+          deny:
+            - pkg: github.com/screwyprof/delegator/scraper
+              desc: migrator must not depend on scraper (the module cycle once ran through here)
+            - pkg: github.com/screwyprof/delegator/web
+              desc: migrator must not depend on web
+        web-handler:
+          files:
+            - "**/web/handler/*.go"
+            - "**/web/handler/**/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/screwyprof/delegator/web/store
+              desc: handlers talk to the domain's finder interface, not to a store
+            - pkg: github.com/jackc/pgx
+              desc: handlers do not touch the database
+        web-store:
+          files:
+            - "**/web/store/*/*.go"
+            - "**/web/store/**/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/screwyprof/delegator/web/handler
+              desc: the store is an adapter for the domain, not for HTTP
+            - pkg: github.com/screwyprof/delegator/web/api
+              desc: the store is an adapter for the domain, not for HTTP
+        web-api:
+          files:
+            - "**/web/api/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/screwyprof/delegator
+              desc: api holds plain transport types with no project dependencies
+    # Local replace directives are how the go.work modules point at each other; they're the
+    # design here, not an accident gomoddirectives should flag.
+    gomoddirectives:
+      replace-local: true
+    # This project's JSON is snake_case throughout: query parameters (per_page), log keys (bytes_in).
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocyclo:
+      min-complexity: 10
+    # require-doc is the rule revive's `exported` would have been: the exclusions below suppress
+    # that preset wholesale, so nothing was checking that an exported symbol has a comment at all.
+    # max-len stays off; it wants 77 and this repo wraps at 120.
+    godoclint:
+      enable:
+        - require-doc
+        - require-pkg-doc
+        - require-stdlib-doclink
+        - no-unused-link
+    govet:
+      enable:
+        - shadow
+    # argument-limit is the reason this block exists: a function taking five things is usually two
+    # of them that belong together. Here it collapsed four near-identical request builders into
+    # one taking a query struct, and turned a fixture's five positional values into named fields.
+    #
+    # The rest of the list is revive's own default set, written out because naming any rule replaces
+    # the defaults rather than adding to them. Without it, adding argument-limit would silently turn
+    # off var-naming and the twenty-two beside it, which is a gate quietly doing less.
+    revive:
+      rules:
+        - name: argument-limit
+          arguments: [4]
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    # Keep in sync with the golines formatter below: same budget, same tab cost,
+    # so `golangci-lint fmt` actually fixes what lll reports.
+    lll:
+      line-length: 120
+      tab-width: 4
     # allow-unused off, so a directive that stops suppressing anything fails rather than sitting
-    # there and outliving the finding it was written for.
+    # there. It caught one the first time it ran: golines had wrapped a line and carried its
+    # //nolint away from the finding it was written for.
     nolintlint:
       allow-unused: false
+    wrapcheck:
+      # Substrings of signatures to ignore; overrides wrapcheck's default set.
+      # See https://github.com/tomarrell/wrapcheck#configuration
+      # errors.New cannot return anyone else's error, so one it produced is this package's own
+      # sentinel and returning it unwrapped is what lets errors.Is match. Said once here rather
+      # than as a //nolint at every sentinel.
+      ignore-sigs:
+        - fmt.Errorf(
+        - errors.New(
+        # ctx.Err() is returned as-is by convention: callers match it with
+        # errors.Is(err, context.Canceled).
+        - (context.Context).Err()
   exclusions:
     generated: lax
     presets:
@@ -22,6 +256,15 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # Exclude some linters from running on test files. goconst among them: a path repeated
+      # across two table cases is a fixture, not a constant waiting to be named.
+      - linters:
+          - dupl
+          - funlen
+          - goconst
+          - gosec
+        path: _test\.go
 formatters:
   enable:
     - gofumpt

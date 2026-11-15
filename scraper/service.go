@@ -10,26 +10,26 @@ import (
 )
 
 // Option configures the Service
-// ------------------------------------------------
+// ------------------------------------------------.
 type Option func(*Service)
 
-// WithClock injects a custom Clock (e.g., for testing)
+// WithClock injects a custom Clock (e.g., for testing).
 func WithClock(c Clock) Option {
 	return func(s *Service) { s.clock = c }
 }
 
-// WithPollInterval sets the polling interval
+// WithPollInterval sets the polling interval.
 func WithPollInterval(d time.Duration) Option {
 	return func(s *Service) { s.pollInterval = d }
 }
 
-// WithChunkSize sets the number of records per batch
+// WithChunkSize sets the number of records per batch.
 func WithChunkSize(n uint64) Option {
 	return func(s *Service) { s.chunkSize = n }
 }
 
 // Service implements two-phase scraping: backfill then live polling
-// -----------------------------------------------------------------
+// -----------------------------------------------------------------.
 type Service struct {
 	api          Client
 	store        Store
@@ -54,6 +54,7 @@ func NewService(api Client, store Store, opts ...Option) *Service {
 	for _, opt := range opts {
 		opt(s)
 	}
+
 	return s
 }
 
@@ -75,25 +76,38 @@ func NewService(api Client, store Store, opts ...Option) *Service {
 // The context signals when to stop, the done channel confirms when stopped.
 func (s *Service) Start(ctx context.Context) (<-chan Event, <-chan struct{}) {
 	done := make(chan struct{})
+
 	go func() {
 		defer close(s.events)
 		defer close(done)
+
 		s.run(ctx)
 	}()
+
 	return s.events, done
 }
 
-// run orchestrates the backfill and polling, respecting context cancellation
-// -------------------------------------------------------------------------
+// run backfills up to the newest delegation, then polls for new ones until ctx is cancelled.
+// A failed backfill ends the run: polling only starts from a consistent checkpoint.
 func (s *Service) run(ctx context.Context) {
-	// Backfill
+	if !s.backfill(ctx) {
+		return
+	}
+
+	s.poll(ctx)
+}
+
+// backfill syncs batch after batch until one comes back empty, reporting progress as events.
+// It reports false if it stopped on an error.
+func (s *Service) backfill(ctx context.Context) bool {
 	start := s.clock.Now()
 
 	// Get starting checkpoint ID for observability
 	startingCheckpointID, err := s.store.LastProcessedID(ctx)
 	if err != nil {
 		s.events <- BackfillError{Err: fmt.Errorf("%w: %w", ErrCheckpointRetrieval, err)}
-		return
+
+		return false
 	}
 
 	s.events <- BackfillStarted{
@@ -102,18 +116,21 @@ func (s *Service) run(ctx context.Context) {
 	}
 
 	var total int64
+
 	for {
 		result, err := s.syncBatch(ctx, s.chunkSize)
 		if err != nil {
 			s.events <- BackfillError{Err: err}
-			return
+
+			return false
 		}
+
 		if result.Count == 0 {
 			break
 		}
+
 		total += int64(result.Count)
 
-		// Emit sync completed event for each batch
 		s.events <- BackfillSyncCompleted{
 			Fetched:      result.Count,
 			CheckpointID: result.CheckpointID,
@@ -121,23 +138,30 @@ func (s *Service) run(ctx context.Context) {
 		}
 	}
 
-	stop := s.clock.Now().Sub(start)
 	s.events <- BackfillDone{
 		TotalProcessed: total,
-		Duration:       stop,
+		Duration:       s.clock.Now().Sub(start),
 	}
 
-	// Polling
+	return true
+}
+
+// poll syncs one batch per interval until ctx is cancelled. A failed cycle is reported and
+// retried on the next tick rather than ending the service.
+func (s *Service) poll(ctx context.Context) {
 	s.events <- PollingStarted{Interval: s.pollInterval}
+
 	for {
 		select {
 		case <-ctx.Done():
 			s.events <- PollingShutdown{Reason: ctx.Err()}
+
 			return
 		case <-s.clock.After(s.pollInterval):
 			result, err := s.syncBatch(ctx, s.chunkSize)
 			if err != nil {
 				s.events <- PollingError{Err: err}
+
 				continue
 			}
 
@@ -151,7 +175,7 @@ func (s *Service) run(ctx context.Context) {
 	}
 }
 
-// syncBatch fetches the next batch, saves it atomically, and returns sync result
+// syncBatch fetches the next batch, saves it atomically, and returns sync result.
 func (s *Service) syncBatch(ctx context.Context, chunkSize uint64) (SyncResult, error) {
 	// respect cancellation
 	select {
@@ -171,6 +195,7 @@ func (s *Service) syncBatch(ctx context.Context, chunkSize uint64) (SyncResult, 
 		Limit:         chunkSize,
 		IDGreaterThan: &checkpointID,
 	}
+
 	batch, err := s.api.GetDelegations(ctx, req)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("%w: %w", ErrAPIRequestFailed, err)
@@ -191,13 +216,14 @@ func (s *Service) syncBatch(ctx context.Context, chunkSize uint64) (SyncResult, 
 
 	// Return the count and new checkpoint ID (highest ID in the batch)
 	newCheckpointID := domainDelegations[len(domainDelegations)-1].ID
+
 	return SyncResult{
 		Count:        len(batch),
 		CheckpointID: newCheckpointID,
 	}, nil
 }
 
-// convertTzktDelegations converts API delegations to domain delegations
+// convertTzktDelegations converts API delegations to domain delegations.
 func convertTzktDelegations(tzktDelegations []tzkt.Delegation) []Delegation {
 	delegations := make([]Delegation, len(tzktDelegations))
 

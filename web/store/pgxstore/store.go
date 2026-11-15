@@ -1,3 +1,5 @@
+// Package pgxstore is the web API's PostgreSQL store: it finds pages of delegations by year
+// and cursor.
 package pgxstore
 
 import (
@@ -13,28 +15,29 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
-// Sentinel errors for store operations
+// Sentinel errors for store operations.
 var (
 	ErrQueryFailed = errors.New("delegation query failed")
 )
 
-// DelegationsFinder implements delegation querying using pgx
+// DelegationsFinder implements delegation querying using pgx.
 type DelegationsFinder struct {
 	pool *pgxpool.Pool
 }
 
 // New creates a new PostgreSQL delegations finder with an existing connection pool
-// Returns the finder and a closer function
+// Returns the finder and a closer function.
 func New(pool *pgxpool.Pool) (*DelegationsFinder, func()) {
 	finder := &DelegationsFinder{pool: pool}
 	closer := func() {
 		pool.Close()
 	}
+
 	return finder, closer
 }
 
 // FindDelegations queries delegations based on the provided criteria
-// Uses LIMIT n+1 technique for efficient pagination without separate count query
+// Uses LIMIT n+1 technique for efficient pagination without separate count query.
 func (f *DelegationsFinder) FindDelegations(
 	ctx context.Context,
 	criteria tezos.DelegationsCriteria,
@@ -69,7 +72,7 @@ func (f *DelegationsFinder) FindDelegations(
 	}
 
 	// Determine if there are more rows in the read direction using LIMIT n+1 technique
-	overflowed := len(delegations) > int(criteria.ItemsPerPage())
+	overflowed := uint64(len(delegations)) > criteria.ItemsPerPage()
 	if overflowed {
 		// Remove the extra record we requested to detect "has more"
 		delegations = delegations[:criteria.ItemsPerPage()]

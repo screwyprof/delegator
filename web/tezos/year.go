@@ -5,21 +5,21 @@ import (
 	"time"
 )
 
-// Year validation constants
+// Year validation constants.
 const (
 	MinValidYear            = 2018 // Year when Tezos mainnet launched
 	MaxAllowedYearsInFuture = 10   // Allow this many years into the future
 )
 
-// Year represents a year value for delegation filtering
+// Year represents a year value for delegation filtering.
 type Year uint64
 
-// Year validation errors
+// Year validation errors.
 var (
 	ErrYearOutOfRange = errors.New("year out of valid range")
 )
 
-// ParseYearFromUint64 creates a Year from uint64 with domain validation
+// ParseYearFromUint64 creates a Year from uint64 with domain validation.
 func ParseYearFromUint64(year uint64) (Year, error) {
 	// Zero means no year filter (use default)
 	if year == 0 {
@@ -27,7 +27,7 @@ func ParseYearFromUint64(year uint64) (Year, error) {
 	}
 
 	// Must be in reasonable range for Tezos launch year + some future buffer
-	currentYear := uint64(time.Now().Year())
+	currentYear := uint64(time.Now().Year()) //nolint:gosec // the current year is always positive
 	maxValidYear := currentYear + MaxAllowedYearsInFuture
 
 	if year < MinValidYear || year > maxValidYear {
@@ -37,7 +37,7 @@ func ParseYearFromUint64(year uint64) (Year, error) {
 	return Year(year), nil
 }
 
-// Uint64 returns the underlying uint64 value
+// Uint64 returns the underlying uint64 value.
 func (y Year) Uint64() uint64 {
 	return uint64(y)
 }

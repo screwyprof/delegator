@@ -1,3 +1,5 @@
+// Package httpkit is a small toolkit for handlers that return an [http.HandlerFunc]: JSON
+// responses, HTTP-aware errors, and request-scoped error tracking that middleware can read.
 package httpkit
 
 import (
@@ -6,65 +8,71 @@ import (
 	"net/http"
 )
 
-// HTTPError interface for HTTP-aware errors with detailed causes
+// HTTPError interface for HTTP-aware errors with detailed causes.
 type HTTPError interface {
 	HTTPCode() int
 	Cause() error
 	error
 }
 
-// Header constants
+// Header constants.
 const (
 	contentTypeHeader  = "Content-Type"
 	contentTypeOptions = "X-Content-Type-Options"
+
+	jsonContentType           = "application/json; charset=utf-8"
+	nosniffContentTypeOptions = "nosniff"
 )
 
-var (
-	jsonContentType           = []string{"application/json; charset=utf-8"}
-	nosniffContentTypeOptions = []string{"nosniff"}
-)
-
-func addHeaderIfNotSet(w http.ResponseWriter, key string, value []string) {
+// addHeaderIfNotSet sets key to value unless the handler already set it. Each call gets its own
+// slice, so no two responses share a header value's backing array.
+func addHeaderIfNotSet(w http.ResponseWriter, key, value string) {
 	header := w.Header()
 	if val := header[key]; len(val) == 0 {
-		header[key] = value
+		header[key] = []string{value}
 	}
 }
 
-// Context helpers for request-scoped error tracking
+// Context helpers for request-scoped error tracking.
 type ctxKeyError struct{}
 
 type errorHolder struct {
 	err error
 }
 
-// WithErrorTracking creates context with error tracking capability, or returns existing context if already present
+// WithErrorTracking creates context with error tracking capability, or returns existing context if already present.
 func WithErrorTracking(ctx context.Context) context.Context {
 	if _, ok := ctx.Value(ctxKeyError{}).(*errorHolder); ok {
 		return ctx // Already has error tracking
 	}
+
 	holder := &errorHolder{}
+
 	return context.WithValue(ctx, ctxKeyError{}, holder)
 }
 
-// SetError sets error in the context
+// SetError sets error in the context.
 func SetError(ctx context.Context, err error) {
 	if holder, ok := ctx.Value(ctxKeyError{}).(*errorHolder); ok {
 		holder.err = err
 	}
 }
 
-// Error gets error from context
+// Error gets error from context.
 func Error(ctx context.Context) error {
 	if holder, ok := ctx.Value(ctxKeyError{}).(*errorHolder); ok {
 		return holder.err
 	}
+
 	return nil
 }
 
-// HTTP handler utilities
+// HandlerFunc is a handler that returns the response to write as an [http.HandlerFunc], so a
+// handler can end with `return httpkit.JSON(v)` or `return httpkit.JSONError(err)`.
 type HandlerFunc func(http.ResponseWriter, *http.Request) http.HandlerFunc
 
+// ServeHTTP gives the request a context that can record an error for middleware, runs h, and
+// writes the handler it returns, if any.
 func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := WithErrorTracking(r.Context())
 	r = r.WithContext(ctx)
@@ -74,9 +82,9 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// JSON creates a handler that returns JSON response
+// JSON creates a handler that returns JSON response.
 func JSON(data any) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		addHeaderIfNotSet(w, contentTypeHeader, jsonContentType)
 		addHeaderIfNotSet(w, contentTypeOptions, nosniffContentTypeOptions)
 		w.WriteHeader(http.StatusOK)
@@ -84,8 +92,8 @@ func JSON(data any) http.HandlerFunc {
 	}
 }
 
-// JsonError creates a handler that sets an error in context and writes the error response
-func JsonError(err HTTPError) http.HandlerFunc {
+// JSONError creates a handler that sets an error in context and writes the error response.
+func JSONError(err HTTPError) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Set error in context for middleware (if available)
 		SetError(r.Context(), err)

@@ -17,7 +17,11 @@ func TestPublicURL(t *testing.T) {
 	})
 
 	t.Run("it accepts an absolute http(s) URL, with or without a path prefix", func(t *testing.T) {
-		for _, value := range []string{"https://api.example.com", "http://localhost:8080", "https://example.com/tezos/"} {
+		for _, value := range []string{
+			"https://api.example.com",
+			"http://localhost:8080",
+			"https://example.com/tezos/",
+		} {
 			t.Setenv("WEB_PUBLIC_URL", value)
 
 			assert.NotPanics(t, func() { config.New() }, value)

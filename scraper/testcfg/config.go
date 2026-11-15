@@ -1,3 +1,5 @@
+// Package testcfg holds settings used only by the scraper's tests (TEST_*, SCRAPER_TEST_*)
+// that have no production equivalent.
 package testcfg
 
 import (
@@ -22,7 +24,7 @@ type Config struct {
 	Checkpoint int64 `env:"TEST_CHECKPOINT" envDefault:"1939557726552064"`
 }
 
-// New loads test configuration from environment variables
+// New loads test configuration from environment variables.
 func New() Config {
 	return env.Must(env.ParseAs[Config]())
 }

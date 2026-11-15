@@ -1,3 +1,4 @@
+// Package logger builds the services' slog loggers and the HTTP request-logging middleware.
 package logger
 
 import (
@@ -5,6 +6,7 @@ import (
 	"os"
 )
 
+// BritishTimeFormat is the day-first layout log timestamps use (dd.mm.yyyy hh:mm:ss).
 const BritishTimeFormat = "02.01.2006 15:04:05"
 
 // Config represents logger configuration from environment/config
@@ -15,17 +17,19 @@ type Config struct {
 	LogHumanFriendly bool
 }
 
-// ParseLevel converts a string to slog.Level, defaulting to Info on error.
+// ParseLevel converts a string to [slog.Level], defaulting to Info on error.
 func ParseLevel(level string) slog.Level {
 	var lvl slog.Level
+
 	err := lvl.UnmarshalText([]byte(level))
 	if err != nil {
 		return slog.LevelInfo
 	}
+
 	return lvl
 }
 
-// NewFromConfig creates a slog.Logger based on Config.
+// NewFromConfig creates a [slog.Logger] based on Config.
 func NewFromConfig(cfg Config) *slog.Logger {
 	lvl := ParseLevel(cfg.LogLevel)
 	opts := &slog.HandlerOptions{
@@ -36,6 +40,7 @@ func NewFromConfig(cfg Config) *slog.Logger {
 				// Format time as British timestamp
 				return slog.String(slog.TimeKey, a.Value.Time().Format(BritishTimeFormat))
 			}
+
 			return a
 		},
 	}
@@ -46,5 +51,6 @@ func NewFromConfig(cfg Config) *slog.Logger {
 	} else {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	}
+
 	return slog.New(handler)
 }

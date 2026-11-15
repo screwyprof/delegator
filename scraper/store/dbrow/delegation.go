@@ -1,3 +1,4 @@
+// Package dbrow maps scraper delegations to the row shape the delegations table bulk-loads.
 package dbrow
 
 import (
@@ -6,7 +7,7 @@ import (
 	"github.com/screwyprof/delegator/scraper"
 )
 
-// Delegation represents a delegation record as stored in the database
+// Delegation represents a delegation record as stored in the database.
 type Delegation struct {
 	ID        int64     `db:"id"`
 	Timestamp time.Time `db:"timestamp"`
@@ -17,7 +18,7 @@ type Delegation struct {
 	// created_at is handled by database DEFAULT CURRENT_TIMESTAMP
 }
 
-// ScraperDelegationsToRows converts scraper delegations directly to [][]any for pgx.CopyFromRows
+// ScraperDelegationsToRows converts scraper delegations directly to [][]any for pgx.CopyFromRows.
 func ScraperDelegationsToRows(delegations []scraper.Delegation) [][]any {
 	rows := make([][]any, len(delegations))
 

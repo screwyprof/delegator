@@ -1,7 +1,10 @@
+// Command scraper backfills every Tezos delegation from the TzKT API into the database, then keeps
+// polling for new ones until it is stopped.
 package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,45 +19,48 @@ import (
 	"github.com/screwyprof/delegator/scraper/store/pgxstore"
 )
 
+// Set at build time with -ldflags "-X main.version=... -X main.date=...".
+//
+//nolint:gochecknoglobals // stamped by the linker, so they must be package-level variables
 var (
 	version = "dev"
 	date    = "unknown"
 )
 
 func main() {
-	// Load configuration
+	// os.Exit only here, after run has returned: an os.Exit inside run would skip its defers
+	// (closing the pool and store, stopping signal delivery).
+	if err := run(); err != nil {
+		slog.Error("Scraper service failed", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg := config.New()
 
-	// Initialize logger and set as default
 	log := logger.NewFromConfig(logger.Config{
 		LogLevel:         cfg.LogLevel,
 		LogHumanFriendly: cfg.LogHumanFriendly,
 	})
 	slog.SetDefault(log)
 
-	// Prepare context with signal handling
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Database connection
+	// Schema and starting checkpoint are the migrator's job; it has already run.
 	db, err := pgxdb.NewConnection(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.ErrorContext(ctx, "Failed to connect to database", slog.Any("error", err))
-		os.Exit(1)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer db.Close()
 
-	// Database setup is now handled by the migrator service
-
-	// Initialize store
 	store, storeCloser := pgxstore.New(db)
 	defer storeCloser()
 
-	// HTTP client & tzkt client
-	httpClient := &http.Client{Timeout: cfg.HttpClientTimeout}
+	httpClient := &http.Client{Timeout: cfg.HTTPClientTimeout}
 	tzktClient := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
 
-	// Create scraper service
 	scraperService := scraper.NewService(
 		tzktClient,
 		store,
@@ -62,24 +68,24 @@ func main() {
 		scraper.WithPollInterval(cfg.PollInterval),
 	)
 
-	// Start service
 	log.InfoContext(ctx, "Starting delegation scraper service",
 		slog.Uint64("chunkSize", cfg.ChunkSize),
 		slog.String("version", version),
 		slog.String("date", date),
 	)
+
 	events, done := scraperService.Start(ctx)
 
-	// Subscribe to events for logging
 	subCloser := setupEventLogging(ctx, events, log)
 	defer subCloser()
 
-	// Wait for shutdown
 	<-done
 	log.InfoContext(ctx, "Scraper service stopped gracefully")
+
+	return nil
 }
 
-// setupEventLogging configures event handlers using slog directly
+// setupEventLogging configures event handlers using slog directly.
 func setupEventLogging(ctx context.Context, events <-chan scraper.Event, log *slog.Logger) func() {
 	return scraper.NewSubscriber(events,
 		scraper.OnBackfillStarted(func(event scraper.BackfillStarted) {

@@ -1,3 +1,5 @@
+// Package tezos is the web API's domain: delegations, the criteria for querying them, and
+// cursor-based pages of results.
 package tezos
 
 import (
@@ -7,7 +9,7 @@ import (
 	"time"
 )
 
-// Sentinel errors for delegation criteria construction
+// Sentinel errors for delegation criteria construction.
 var (
 	ErrInvalidYear    = errors.New("invalid year")
 	ErrInvalidPerPage = errors.New("invalid per_page")
@@ -15,12 +17,12 @@ var (
 	ErrConflictingPagination = errors.New("conflicting pagination parameters")
 )
 
-// DelegationsFinder defines the interface for querying delegations
+// DelegationsFinder defines the interface for querying delegations.
 type DelegationsFinder interface {
 	FindDelegations(ctx context.Context, criteria DelegationsCriteria) (*DelegationsPage, error)
 }
 
-// Delegation represents a delegation in the Tezos blockchain
+// Delegation represents a delegation in the Tezos blockchain.
 type Delegation struct {
 	ID        int64
 	Timestamp time.Time
@@ -29,7 +31,7 @@ type Delegation struct {
 	Level     int64
 }
 
-// DelegationsCriteria specifies criteria for querying delegations using domain Value Objects
+// DelegationsCriteria specifies criteria for querying delegations using domain Value Objects.
 type DelegationsCriteria struct {
 	Year Year    // Year filter (YYYY format). 0 means no year filtering
 	Page Page    // 1-based page number; only used when neither cursor is set
@@ -39,33 +41,34 @@ type DelegationsCriteria struct {
 	Before *Cursor // Page of delegations strictly newer than this position
 }
 
-// CriteriaOption sets an optional part of DelegationsCriteria
+// CriteriaOption sets an optional part of DelegationsCriteria.
 type CriteriaOption func(*DelegationsCriteria)
 
-// After pages from just past c, toward older delegations. A nil c is a no-op.
-func After(c *Cursor) CriteriaOption {
-	return func(criteria *DelegationsCriteria) { criteria.After = c }
+// After pages from just past c, toward older delegations.
+func After(c Cursor) CriteriaOption {
+	return func(criteria *DelegationsCriteria) { criteria.After = &c }
 }
 
-// Before pages from just ahead of c, toward newer delegations. A nil c is a no-op.
-func Before(c *Cursor) CriteriaOption {
-	return func(criteria *DelegationsCriteria) { criteria.Before = c }
+// Before pages from just ahead of c, toward newer delegations.
+func Before(c Cursor) CriteriaOption {
+	return func(criteria *DelegationsCriteria) { criteria.Before = &c }
 }
 
-// ItemsPerPage returns the number of items requested per page
+// ItemsPerPage returns the number of items requested per page.
 func (c DelegationsCriteria) ItemsPerPage() uint64 {
 	return c.Size.Uint64()
 }
 
-// ItemsToSkip returns the number of items to skip for page-number pagination (0 with a cursor)
+// ItemsToSkip returns the number of items to skip for page-number pagination (0 with a cursor).
 func (c DelegationsCriteria) ItemsToSkip() uint64 {
 	if c.After != nil || c.Before != nil {
 		return 0
 	}
+
 	return (c.Page.Uint64() - 1) * c.Size.Uint64()
 }
 
-// SeeksBackward reports whether the page is read toward newer delegations (a Before cursor)
+// SeeksBackward reports whether the page is read toward newer delegations (a Before cursor).
 func (c DelegationsCriteria) SeeksBackward() bool {
 	return c.Before != nil
 }
@@ -100,6 +103,7 @@ func NewDelegationsCriteria(year, page, perPage uint64, opts ...CriteriaOption) 
 			ErrConflictingPagination,
 		)
 	}
+
 	if page != 0 && (criteria.After != nil || criteria.Before != nil) {
 		return DelegationsCriteria{}, fmt.Errorf("%w: page can't be combined with a cursor", ErrConflictingPagination)
 	}

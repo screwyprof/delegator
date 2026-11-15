@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -19,17 +20,28 @@ import (
 	"github.com/screwyprof/delegator/pkg/logger"
 )
 
-// Error is a test error type that implements httpkit.HTTPError
+// Causes the middleware should log in detail.
+var (
+	errInvalidYear       = errors.New("invalid year parameter: year must be exactly 4 digits")
+	errConnectionRefused = errors.New("database connection failed: connection refused")
+)
+
+// Error is a test error type that implements httpkit.HTTPError.
 type Error struct {
 	err  error
 	code int
 }
 
+// Error returns the cause's message.
 func (e Error) Error() string { return e.err.Error() }
-func (e Error) HTTPCode() int { return e.code }
-func (e Error) Cause() error  { return e.err }
 
-// logEntry represents a parsed log entry for testing
+// HTTPCode returns the status to respond with.
+func (e Error) HTTPCode() int { return e.code }
+
+// Cause returns the underlying error the middleware should log.
+func (e Error) Cause() error { return e.err }
+
+// logEntry represents a parsed log entry for testing.
 type logEntry struct {
 	Level    string  `json:"level"`
 	Msg      string  `json:"msg"`
@@ -42,7 +54,7 @@ type logEntry struct {
 	Error    string  `json:"error,omitempty"`
 }
 
-// parseLogEntry parses a single JSON log line
+// parseLogEntry parses a single JSON log line.
 func parseLogEntry(t *testing.T, logOutput string) logEntry {
 	t.Helper()
 
@@ -51,12 +63,15 @@ func parseLogEntry(t *testing.T, logOutput string) logEntry {
 	lastLine := lines[len(lines)-1]
 
 	var entry logEntry
+
 	err := json.Unmarshal([]byte(lastLine), &entry)
 	require.NoError(t, err, "Should parse log entry as JSON")
 
 	return entry
 }
 
+// The middleware logs one structured line per request: level by status, duration, byte counts,
+// and the detailed cause of any error the handler recorded.
 func TestNewMiddleware(t *testing.T) {
 	t.Parallel()
 
@@ -65,9 +80,10 @@ func TestNewMiddleware(t *testing.T) {
 
 		// Arrange
 		var logBuffer bytes.Buffer
+
 		log := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-		successHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		successHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status": "ok"}`))
 		})
@@ -99,12 +115,13 @@ func TestNewMiddleware(t *testing.T) {
 
 		// Arrange
 		var logBuffer bytes.Buffer
+
 		log := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 		badRequestHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			validationErr := errors.New("invalid year parameter: year must be exactly 4 digits")
+			validationErr := errInvalidYear
 			apiErr := Error{err: validationErr, code: http.StatusBadRequest}
-			httpkit.JsonError(apiErr)(w, r)
+			httpkit.JSONError(apiErr)(w, r)
 		})
 
 		middleware := logger.NewMiddleware(log)(badRequestHandler)
@@ -131,12 +148,13 @@ func TestNewMiddleware(t *testing.T) {
 
 		// Arrange
 		var logBuffer bytes.Buffer
+
 		log := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 		serverErrorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			internalErr := errors.New("database connection failed: connection refused")
+			internalErr := errConnectionRefused
 			apiErr := Error{err: internalErr, code: http.StatusInternalServerError}
-			httpkit.JsonError(apiErr)(w, r)
+			httpkit.JSONError(apiErr)(w, r)
 		})
 
 		middleware := logger.NewMiddleware(log)(serverErrorHandler)
@@ -158,14 +176,46 @@ func TestNewMiddleware(t *testing.T) {
 		assert.Equal(t, "database connection failed: connection refused", entry.Error)
 	})
 
+	t.Run("it logs the detailed cause of a wrapped HTTP error", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var logBuffer bytes.Buffer
+
+		log := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		wrappingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			apiErr := Error{
+				err:  errConnectionRefused,
+				code: http.StatusInternalServerError,
+			}
+			// SetError accepts any error, so a caller may wrap the HTTP error with context first.
+			httpkit.SetError(r.Context(), fmt.Errorf("loading delegations: %w", apiErr))
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+
+		middleware := logger.NewMiddleware(log)(wrappingHandler)
+		req := httptest.NewRequest(http.MethodGet, "/test/wrapped", nil)
+		rec := httptest.NewRecorder()
+
+		// Act
+		middleware.ServeHTTP(rec, req)
+
+		// Assert
+		entry := parseLogEntry(t, logBuffer.String())
+		assert.Equal(t, "database connection failed: connection refused", entry.Error,
+			"A wrapped HTTPError should still be recognised and its detailed cause logged")
+	})
+
 	t.Run("it captures request duration accurately", func(t *testing.T) {
 		t.Parallel()
 
 		// Arrange
 		var logBuffer bytes.Buffer
+
 		log := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-		slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slowHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(10 * time.Millisecond) // Small delay
 			w.WriteHeader(http.StatusOK)
 		})
@@ -176,7 +226,9 @@ func TestNewMiddleware(t *testing.T) {
 
 		// Act
 		start := time.Now()
+
 		middleware.ServeHTTP(rec, req)
+
 		actualDuration := time.Since(start)
 
 		// Assert
@@ -195,9 +247,10 @@ func TestNewMiddleware(t *testing.T) {
 
 		// Arrange
 		var logBuffer bytes.Buffer
+
 		log := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-		echoHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echoHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("Hello, World!"))
 		})
@@ -208,6 +261,7 @@ func TestNewMiddleware(t *testing.T) {
 		reqBody := `{"test": "data"}`
 		req := httptest.NewRequest(http.MethodPost, "/test/echo", strings.NewReader(reqBody))
 		req.Header.Set("Content-Length", strconv.Itoa(len(reqBody)))
+
 		rec := httptest.NewRecorder()
 
 		// Act

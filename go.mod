@@ -16,6 +16,7 @@ require (
 	github.com/screwyprof/delegator/pkg v0.0.0
 	github.com/screwyprof/delegator/scraper v0.0.0
 	github.com/screwyprof/delegator/web v0.0.0-20260201044028-8d2301d16380
+	github.com/stretchr/testify v1.12.1
 )
 
 require (
@@ -29,6 +30,7 @@ require (
 	github.com/peterldowns/pgtestdb/migrators/sqlmigrator v0.1.1 // indirect
 	github.com/rubenv/sql-migrate v1.8.1 // indirect
 	github.com/zolstein/pgx-collect v0.0.0-20260726200924-f9321240541d // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )

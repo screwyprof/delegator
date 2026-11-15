@@ -1,3 +1,5 @@
+// Package handler serves GET /xtz/delegations: it binds the request, queries the domain and
+// writes the page with GitHub-style cursor Link headers.
 package handler
 
 import (
@@ -13,19 +15,21 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
+// GetDelegationsRoute is the ServeMux pattern the handler is registered under.
 const GetDelegationsRoute = http.MethodGet + " " + "/xtz/delegations"
 
-// Sentinel errors
+// ErrQueryFailed wraps a store failure; the client gets a generic 500.
 var (
 	ErrQueryFailed = errors.New("failed to query delegations")
 )
 
+// TezosGetDelegations serves GET /xtz/delegations from a tezos.DelegationsFinder.
 type TezosGetDelegations struct {
 	finder    tezos.DelegationsFinder
 	publicURL *url.URL
 }
 
-// Option configures optional TezosGetDelegations behaviour
+// Option configures optional TezosGetDelegations behaviour.
 type Option func(*TezosGetDelegations)
 
 // WithPublicURL sets the base URL the API is published at (e.g. https://api.example.com),
@@ -38,6 +42,7 @@ func WithPublicURL(u *url.URL) Option {
 	}
 }
 
+// NewTezosGetDelegations creates the handler; see WithPublicURL for the one option.
 func NewTezosGetDelegations(finder tezos.DelegationsFinder, opts ...Option) *TezosGetDelegations {
 	h := &TezosGetDelegations{
 		finder: finder,
@@ -45,46 +50,39 @@ func NewTezosGetDelegations(finder tezos.DelegationsFinder, opts ...Option) *Tez
 	for _, opt := range opts {
 		opt(h)
 	}
+
 	return h
 }
 
+// AddRoutes registers the handler on m at GetDelegationsRoute.
 func (h *TezosGetDelegations) AddRoutes(m *http.ServeMux) {
 	m.Handle(GetDelegationsRoute, httpkit.HandlerFunc(h.GetDelegations))
 }
 
+// GetDelegations returns one page of delegations, newest first, optionally for one year. Bad
+// parameters are a 400; the Link header carries first/prev/next cursor links.
 func (h *TezosGetDelegations) GetDelegations(w http.ResponseWriter, r *http.Request) http.HandlerFunc {
 	// Parse query parameters using bind layer
 	req, err := bind.GetDelegationsRequest(r)
 	if err != nil {
-		return httpkit.JsonError(api.BadRequest(err))
+		return httpkit.JSONError(api.BadRequest(err))
 	}
 
-	after, err := bind.DecodeCursor(req.After, req.Year)
+	cursors, err := bind.CursorOptions(req)
 	if err != nil {
-		return httpkit.JsonError(api.BadRequest(err))
-	}
-
-	before, err := bind.DecodeCursor(req.Before, req.Year)
-	if err != nil {
-		return httpkit.JsonError(api.BadRequest(err))
+		return httpkit.JSONError(api.BadRequest(err))
 	}
 
 	// Create domain criteria with validation
-	criteria, err := tezos.NewDelegationsCriteria(
-		req.Year,
-		req.Page,
-		req.PerPage,
-		tezos.After(after),
-		tezos.Before(before),
-	)
+	criteria, err := tezos.NewDelegationsCriteria(req.Year, req.Page, req.PerPage, cursors...)
 	if err != nil {
-		return httpkit.JsonError(api.BadRequest(err))
+		return httpkit.JSONError(api.BadRequest(err))
 	}
 
 	// Query delegations
 	page, err := h.finder.FindDelegations(r.Context(), criteria)
 	if err != nil {
-		return httpkit.JsonError(api.InternalServerError(fmt.Errorf("%w: %w", ErrQueryFailed, err)))
+		return httpkit.JSONError(api.InternalServerError(fmt.Errorf("%w: %w", ErrQueryFailed, err)))
 	}
 
 	// Build GitHub-style Link header for navigation
@@ -94,6 +92,7 @@ func (h *TezosGetDelegations) GetDelegations(w http.ResponseWriter, r *http.Requ
 
 	// Return JSON response
 	resp := bind.GetDelegationsResponse(page.Delegations)
+
 	return httpkit.JSON(resp)
 }
 
@@ -143,11 +142,13 @@ func pageLink(baseURL *url.URL, size tezos.PerPage, direction, token string) str
 	query.Del("after")
 	query.Del("before")
 	query.Set("per_page", fmt.Sprintf("%d", size))
+
 	if direction != "" {
 		query.Set(direction, token)
 	}
 
 	u.RawQuery = query.Encode()
+
 	return u.String()
 }
 
@@ -166,13 +167,16 @@ func (h *TezosGetDelegations) requestURL(r *http.Request) *url.URL {
 		u.Host = h.publicURL.Host
 		u.Path = strings.TrimSuffix(h.publicURL.Path, "/") + r.URL.Path
 		u.RawPath = ""
+
 		return &u
 	}
 
 	u.Host = r.Host
+
 	u.Scheme = "http"
 	if r.TLS != nil {
 		u.Scheme = "https"
 	}
+
 	return &u
 }

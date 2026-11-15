@@ -7,26 +7,26 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
-// SQL queries
+// SQL queries.
 const (
 	baseDelegationsQuery = "SELECT id, timestamp, amount, delegator, level FROM delegations"
 )
 
-// DelegationsQueryBuilder provides a domain-specific language for building delegation queries
+// DelegationsQueryBuilder provides a domain-specific language for building delegation queries.
 type DelegationsQueryBuilder struct {
 	sql   string
 	where []string
 	args  []any
 }
 
-// NewDelegationsQuery creates a new delegation query builder
+// NewDelegationsQuery creates a new delegation query builder.
 func NewDelegationsQuery() *DelegationsQueryBuilder {
 	return &DelegationsQueryBuilder{
 		sql: baseDelegationsQuery,
 	}
 }
 
-// ForCriteria applies the delegation criteria to the query in one fluent call
+// ForCriteria applies the delegation criteria to the query in one fluent call.
 func (q *DelegationsQueryBuilder) ForCriteria(criteria tezos.DelegationsCriteria) *DelegationsQueryBuilder {
 	return q.
 		filterByYear(criteria.Year).
@@ -35,11 +35,12 @@ func (q *DelegationsQueryBuilder) ForCriteria(criteria tezos.DelegationsCriteria
 		paginateWithDetection(criteria)
 }
 
-// filterByYear adds year filtering if the year is specified
+// filterByYear adds year filtering if the year is specified.
 func (q *DelegationsQueryBuilder) filterByYear(year tezos.Year) *DelegationsQueryBuilder {
 	if year.Uint64() > 0 {
 		q.addWhereCondition("year = $%d", year.Uint64())
 	}
+
 	return q
 }
 
@@ -53,6 +54,7 @@ func (q *DelegationsQueryBuilder) seekFromCursor(criteria tezos.DelegationsCrite
 	case criteria.Before != nil:
 		q.addWhereCondition("(timestamp, id) > ($%d, $%d)", criteria.Before.Timestamp, criteria.Before.ID)
 	}
+
 	return q
 }
 
@@ -66,10 +68,11 @@ func (q *DelegationsQueryBuilder) orderByPosition(criteria tezos.DelegationsCrit
 	} else {
 		q.sql = q.withWhere() + " ORDER BY timestamp DESC, id DESC"
 	}
+
 	return q
 }
 
-// paginateWithDetection adds pagination with "has more" detection using LIMIT n+1
+// paginateWithDetection adds pagination with "has more" detection using LIMIT n+1.
 func (q *DelegationsQueryBuilder) paginateWithDetection(criteria tezos.DelegationsCriteria) *DelegationsQueryBuilder {
 	// Request one extra item to detect if there are more pages
 	limit := criteria.ItemsPerPage() + 1
@@ -84,7 +87,7 @@ func (q *DelegationsQueryBuilder) paginateWithDetection(criteria tezos.Delegatio
 	return q
 }
 
-// Build returns the final SQL query and arguments
+// Build returns the final SQL query and arguments.
 func (q *DelegationsQueryBuilder) Build() (string, []any) {
 	return q.sql, q.args
 }
@@ -99,18 +102,20 @@ func (q *DelegationsQueryBuilder) addWhereCondition(sqlClause string, values ...
 		placeholders[i] = q.nextPlaceholder()
 		q.args = append(q.args, value)
 	}
+
 	q.where = append(q.where, fmt.Sprintf(sqlClause, placeholders...))
 }
 
-// withWhere returns the SQL so far with the WHERE clause rendered
+// withWhere returns the SQL so far with the WHERE clause rendered.
 func (q *DelegationsQueryBuilder) withWhere() string {
 	if len(q.where) == 0 {
 		return q.sql
 	}
+
 	return q.sql + " WHERE " + strings.Join(q.where, " AND ")
 }
 
-// addParameter adds a SQL clause with a parameter
+// addParameter adds a SQL clause with a parameter.
 func (q *DelegationsQueryBuilder) addParameter(sqlClause string, value any) {
 	placeholder := q.nextPlaceholder()
 	q.sql += " " + fmt.Sprintf(sqlClause, placeholder)

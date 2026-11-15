@@ -1,7 +1,11 @@
+// Command web serves the delegations HTTP API (GET /xtz/delegations) from the database the
+// scraper fills.
 package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,23 +21,42 @@ import (
 	"github.com/screwyprof/delegator/web/store/pgxstore"
 )
 
+// Set at build time with -ldflags "-X main.version=... -X main.date=...".
+//
+//nolint:gochecknoglobals // stamped by the linker, so they must be package-level variables
 var (
 	version = "dev"
 	date    = "unknown"
 )
 
+// HTTP server timeouts. ReadHeaderTimeout is the one that matters most: without it a client can
+// hold a connection open indefinitely by trickling request headers (Slowloris).
+const (
+	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 10 * time.Second
+	writeTimeout      = 30 * time.Second
+	idleTimeout       = 120 * time.Second
+	shutdownTimeout   = 30 * time.Second // grace period for in-flight requests
+)
+
 func main() {
-	// Load configuration
+	// os.Exit only here, after run has returned: an os.Exit inside run would skip its defers
+	// (closing the pool, stopping signal delivery).
+	if err := run(); err != nil {
+		slog.Error("Web API service failed", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg := config.New()
 
-	// Initialize logger and set as default
 	log := logger.NewFromConfig(logger.Config{
 		LogLevel:         cfg.LogLevel,
 		LogHumanFriendly: cfg.LogHumanFriendly,
 	})
 	slog.SetDefault(log)
 
-	// Prepare context with signal handling
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -42,58 +65,61 @@ func main() {
 		slog.String("date", date),
 	)
 
-	// Initialize database connection
 	db, err := pgxdb.NewConnection(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.ErrorContext(ctx, "Failed to connect to database", slog.Any("error", err))
-		os.Exit(1)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer db.Close()
 
-	// Initialize store
 	store, storeCloser := pgxstore.New(db)
 	defer storeCloser()
 
-	// Create HTTP server
 	mux := http.NewServeMux()
+	handler.NewTezosGetDelegations(store, handler.WithPublicURL(&cfg.PublicURL)).AddRoutes(mux)
 
-	// Register handlers with real store
-	tezosHandler := handler.NewTezosGetDelegations(store, handler.WithPublicURL(&cfg.PublicURL))
-	tezosHandler.AddRoutes(mux)
-
-	// Wrap with logging middleware
-	loggedMux := logger.NewMiddleware(log)(mux)
-
-	// Create server address
 	addr := net.JoinHostPort(cfg.HTTPHost, cfg.HTTPPort)
+	server := newServer(addr, logger.NewMiddleware(log)(mux))
 
-	server := &http.Server{
-		Addr:    addr,
-		Handler: loggedMux,
-	}
+	// The listener's error comes back over a channel rather than ending the process from the
+	// goroutine, so run's defers still execute when the port can't be bound.
+	serveErr := make(chan error, 1)
 
-	// Start server in a goroutine
 	go func() {
 		log.InfoContext(ctx, "Server started", slog.String("addr", addr))
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.ErrorContext(ctx, "Server failed to start", slog.Any("error", err))
-			os.Exit(1)
+
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
 		}
 	}()
 
-	// Wait for interrupt signal
-	<-ctx.Done()
+	select {
+	case err := <-serveErr:
+		return fmt.Errorf("serving HTTP: %w", err)
+	case <-ctx.Done():
+	}
 
 	log.InfoContext(ctx, "Shutting down server...")
 
-	// Give outstanding requests 30 seconds to complete
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.ErrorContext(ctx, "Server forced to shutdown", slog.Any("error", err))
-		os.Exit(1)
+		return fmt.Errorf("shutting down server: %w", err)
 	}
 
 	log.InfoContext(ctx, "Server exited gracefully")
+
+	return nil
+}
+
+// newServer builds the HTTP server with every timeout bounded.
+func newServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
 }

@@ -1,7 +1,10 @@
+// Command migrator applies the database migrations and optionally seeds the scraper's starting
+// checkpoint, then exits. It runs before the scraper and web services start.
 package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -13,17 +16,26 @@ import (
 	"github.com/screwyprof/delegator/pkg/pgxdb"
 )
 
-// These values are overridden at build time using -ldflags
+// Set at build time with -ldflags "-X main.version=... -X main.date=...".
+//
+//nolint:gochecknoglobals // stamped by the linker, so they must be package-level variables
 var (
 	version = "dev"
 	date    = "unknown"
 )
 
 func main() {
-	// Load configuration from environment
+	// os.Exit only here, after run has returned: an os.Exit inside run would skip its defers
+	// (closing the pool, cancelling the timeout, stopping signal delivery).
+	if err := run(); err != nil {
+		slog.Error("Database migrator failed", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	cfg := config.New()
 
-	// Initialize logger and set as default
 	log := logger.NewFromConfig(logger.Config{
 		LogLevel:         cfg.LogLevel,
 		LogHumanFriendly: cfg.LogHumanFriendly,
@@ -37,38 +49,43 @@ func main() {
 		slog.String("date", date),
 	)
 
-	// Create a context that cancels on SIGINT/SIGTERM _or_ when the timeout elapses
-	baseCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// SIGINT/SIGTERM cancel everything. The operation timeout bounds connecting and the checkpoint
+	// step, but not the migrations: how long they take depends on the size of the table, and an
+	// index build cut off at a fixed limit would be retried and cut off again on every restart.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	ctx, cancel := context.WithTimeout(baseCtx, cfg.OperationTimeout)
-	defer cancel()
+	connectCtx, cancelConnect := context.WithTimeout(ctx, cfg.OperationTimeout)
+	defer cancelConnect()
 
-	// Connect to database
-	db, err := pgxdb.NewConnection(ctx, cfg.DatabaseURL)
+	db, err := pgxdb.NewConnection(connectCtx, cfg.DatabaseURL)
 	if err != nil {
-		log.Error("Failed to connect to database", slog.Any("error", err))
-		os.Exit(1)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer db.Close()
 
-	// Apply migrations
 	log.Info("Applying database migrations")
-	if err := migrator.ApplyMigrations(db, cfg.MigrationsDir); err != nil {
-		log.Error("Failed to apply migrations", slog.Any("error", err))
-		os.Exit(1)
+
+	if err := migrator.ApplyMigrations(ctx, db, cfg.MigrationsDir); err != nil {
+		return fmt.Errorf("applying migrations: %w", err)
 	}
+
 	log.Info("Database migrations applied successfully")
 
-	// Set initial checkpoint if specified
 	if cfg.InitialCheckpoint > 0 {
 		log.Info("Initializing checkpoint", slog.Uint64("checkpoint", cfg.InitialCheckpoint))
-		if err := migrator.InitializeCheckpoint(ctx, db, cfg.InitialCheckpoint); err != nil {
-			log.Error("Failed to initialize checkpoint", slog.Any("error", err))
-			os.Exit(1)
+
+		checkpointCtx, cancelCheckpoint := context.WithTimeout(ctx, cfg.OperationTimeout)
+		defer cancelCheckpoint()
+
+		if err := migrator.InitializeCheckpoint(checkpointCtx, db, cfg.InitialCheckpoint); err != nil {
+			return fmt.Errorf("initializing checkpoint: %w", err)
 		}
+
 		log.Info("Checkpoint initialized successfully")
 	}
 
 	log.Info("Database migrator completed successfully")
+
+	return nil
 }

@@ -7,9 +7,10 @@ package seedtestdb
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -37,6 +38,9 @@ func newTestConfig() testConfig {
 	return env.Must(env.ParseAs[testConfig]())
 }
 
+// ErrNegativeCheckpoint rejects a TEST_CHECKPOINT below zero.
+var ErrNegativeCheckpoint = errors.New("demo checkpoint must not be negative")
+
 // CreateSeededTestDatabase creates a test database with migrations applied and seeded
 // with realistic demo delegation data (fetched via the real scraper against the real
 // TzKT API, at a fast demo-scale checkpoint). Returns the connection pool ready for use.
@@ -48,6 +52,7 @@ func CreateSeededTestDatabase(t *testing.T, migrationsDir string) *pgxpool.Pool 
 	cfg := config.New()                    // parsed once, reused for chunk size and the scraper client below
 
 	migratorInstance := newSeededMigrator(migrationsDir, checkpoint, cfg, testCfg.SeedTimeout)
+
 	return migratortest.CreateTestDatabase(t, migratorInstance)
 }
 
@@ -77,26 +82,22 @@ func newSeededMigrator(
 func (m *seededMigrator) Hash() (string, error) {
 	baseHash, err := migrator.MigrationsHash(m.migrationsDir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hashing migrations: %w", err)
 	}
 
-	return "seeded_demo_" + baseHash + "_" + strconv.FormatInt(
-		m.demoCheckpoint,
-		10,
-	) + "_" + strconv.FormatUint(
-		m.cfg.ChunkSize,
-		10,
-	), nil
+	return fmt.Sprintf("seeded_demo_%s_%d_%d", baseHash, m.demoCheckpoint, m.cfg.ChunkSize), nil
 }
 
 func (m *seededMigrator) Migrate(ctx context.Context, db *sql.DB, conf pgtestdb.Config) error {
-	if err := migrator.ApplyMigrationsDB(db, m.migrationsDir); err != nil {
-		return err
+	if err := migrator.ApplyMigrationsDB(ctx, db, m.migrationsDir); err != nil {
+		return fmt.Errorf("applying migrations: %w", err)
 	}
+
 	return m.seedDemoData(ctx, conf.URL())
 }
 
-// seedDemoData seeds the template database with demo delegation data
+// seedDemoData seeds the template database with demo delegation data: it points the scraper's
+// checkpoint at the demo checkpoint, then backfills from TzKT until caught up.
 func (m *seededMigrator) seedDemoData(ctx context.Context, dbURL string) error {
 	slog.InfoContext(ctx, "🌱 Seeding demo database with delegation data",
 		"checkpoint", m.demoCheckpoint,
@@ -108,19 +109,29 @@ func (m *seededMigrator) seedDemoData(ctx context.Context, dbURL string) error {
 
 	pool, err := pgxdb.NewConnection(seedCtx, dbURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("connecting to template database: %w", err)
 	}
 	defer pool.Close()
 
-	// Set the demo checkpoint for seeding (always overwrite for consistent seeding)
-	if err := migrator.SetCheckpoint(seedCtx, pool, uint64(m.demoCheckpoint)); err != nil {
-		return err
+	// Set the demo checkpoint for seeding (always overwrite for consistent seeding). TzKT ids are
+	// positive; a negative TEST_CHECKPOINT would otherwise wrap to a huge uint64 checkpoint.
+	if m.demoCheckpoint < 0 {
+		return fmt.Errorf("%w: %d", ErrNegativeCheckpoint, m.demoCheckpoint)
 	}
 
+	if err := migrator.SetCheckpoint(seedCtx, pool, uint64(m.demoCheckpoint)); err != nil {
+		return fmt.Errorf("setting demo checkpoint: %w", err)
+	}
+
+	return m.backfill(seedCtx, cancel, pool)
+}
+
+// backfill runs the scraper over pool until its backfill finishes, then stops it via cancel.
+func (m *seededMigrator) backfill(ctx context.Context, cancel context.CancelFunc, pool *pgxpool.Pool) error {
 	store, storeCloser := pgxstore.New(pool)
 	defer storeCloser()
 
-	httpClient := &http.Client{Timeout: m.cfg.HttpClientTimeout}
+	httpClient := &http.Client{Timeout: m.cfg.HTTPClientTimeout}
 	client := tzkt.NewClient(httpClient, m.cfg.TzktAPIURL)
 
 	service := scraper.NewService(
@@ -130,21 +141,25 @@ func (m *seededMigrator) seedDemoData(ctx context.Context, dbURL string) error {
 		scraper.WithPollInterval(m.cfg.PollInterval),
 	)
 
-	events, done := service.Start(seedCtx)
+	events, done := service.Start(ctx)
 
 	resultChan := make(chan error, 1)
 
 	subscriberCloser := scraper.NewSubscriber(events,
-		scraper.OnBackfillDone(func(e scraper.BackfillDone) {
-			slog.InfoContext(seedCtx, "✅ Demo database seeding completed successfully")
+		scraper.OnBackfillDone(func(scraper.BackfillDone) {
+			slog.InfoContext(ctx, "✅ Demo database seeding completed successfully")
+
 			resultChan <- nil
+
 			cancel()
 		}),
 		scraper.OnBackfillError(func(e scraper.BackfillError) {
 			resultChan <- e.Err
+
 			cancel()
 		}),
 	)
+
 	<-done
 
 	// subscriberCloser blocks until the events channel is drained, so the terminal

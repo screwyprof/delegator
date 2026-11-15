@@ -1,3 +1,4 @@
+// Package config loads the web API's configuration from WEB_* environment variables.
 package config
 
 import (
@@ -8,14 +9,14 @@ import (
 	env "github.com/caarlos0/env/v11"
 )
 
-// ErrInvalidConfig reports a configuration value that parsed but can't be used
+// ErrInvalidConfig reports a configuration value that parsed but can't be used.
 var ErrInvalidConfig = errors.New("invalid configuration")
 
-// Config holds all configuration loaded from environment variables
+// Config holds all configuration loaded from environment variables.
 type Config struct {
 	HTTPPort         string `env:"WEB_HTTP_PORT"      envDefault:"8080"`
 	HTTPHost         string `env:"WEB_HTTP_HOST"      envDefault:"localhost"`
-	DatabaseURL      string `env:"WEB_DATABASE_URL"   envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"`
+	DatabaseURL      string `env:"WEB_DATABASE_URL"   envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"` //nolint:lll // a struct tag can't be wrapped
 	LogLevel         string `env:"LOG_LEVEL"          envDefault:"info"`
 	LogHumanFriendly bool   `env:"LOG_HUMAN_FRIENDLY" envDefault:"false"`
 
@@ -44,6 +45,7 @@ func validatePublicURL(u url.URL) error {
 	if u == (url.URL{}) {
 		return nil
 	}
+
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf(
 			"%w: WEB_PUBLIC_URL must be an absolute http(s) URL like https://api.example.com, got %q",
@@ -51,5 +53,6 @@ func validatePublicURL(u url.URL) error {
 			u.String(),
 		)
 	}
+
 	return nil
 }

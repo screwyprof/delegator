@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -8,9 +9,10 @@ import (
 	"github.com/screwyprof/delegator/pkg/httpkit"
 )
 
-// responseWriter wraps http.ResponseWriter to capture status code and response size
+// responseWriter wraps [http.ResponseWriter] to capture status code and response size.
 type responseWriter struct {
 	http.ResponseWriter
+
 	statusCode int
 	bytesOut   int
 }
@@ -23,10 +25,11 @@ func (rw *responseWriter) WriteHeader(code int) {
 func (rw *responseWriter) Write(b []byte) (int, error) {
 	size, err := rw.ResponseWriter.Write(b)
 	rw.bytesOut += size
-	return size, err
+
+	return size, err //nolint:wrapcheck // a transparent ResponseWriter wrapper must return Write's error unchanged
 }
 
-// NewMiddleware creates HTTP request logging middleware
+// NewMiddleware creates HTTP request logging middleware.
 func NewMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +56,7 @@ func NewMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			// Determine log level based on status code
 			var level slog.Level
+
 			switch {
 			case rw.statusCode >= http.StatusInternalServerError:
 				level = slog.LevelError
@@ -82,10 +86,12 @@ func NewMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// errorMessage extracts the appropriate error message for logging
+// errorMessage extracts the appropriate error message for logging. [errors.AsType] rather than a
+// type assertion: SetError takes any error, so the HTTPError may arrive wrapped.
 func errorMessage(err error) string {
-	if httpErr, ok := err.(httpkit.HTTPError); ok {
+	if httpErr, ok := errors.AsType[httpkit.HTTPError](err); ok {
 		return httpErr.Cause().Error() // detailed error for logs
 	}
+
 	return err.Error() // fallback for regular errors
 }

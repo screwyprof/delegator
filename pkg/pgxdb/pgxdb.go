@@ -1,3 +1,4 @@
+// Package pgxdb opens pgx connection pools with the settings the services share.
 package pgxdb
 
 import (
@@ -9,19 +10,21 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Sentinel errors for pgxdb package operations
+// Errors NewConnection returns, each wrapping the underlying pgx error.
 var (
-	// Connection errors
+	// ErrInvalidConnectionString means the connection string could not be parsed.
 	ErrInvalidConnectionString = errors.New("invalid database connection string")
-	ErrConnectionPoolCreation  = errors.New("failed to create database connection pool")
-	ErrDatabaseConnection      = errors.New("failed to connect to database")
+	// ErrConnectionPoolCreation means the pool could not be created from a valid config.
+	ErrConnectionPoolCreation = errors.New("failed to create database connection pool")
+	// ErrDatabaseConnection means the pool was created but the database did not answer a ping.
+	ErrDatabaseConnection = errors.New("failed to connect to database")
 )
 
-// NewConnection creates a new pgx database connection pool with production-optimized settings
+// NewConnection creates a new pgx database connection pool with production-optimized settings.
 func NewConnection(ctx context.Context, connectionString string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(connectionString)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidConnectionString, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConnectionString, err)
 	}
 
 	// Optimize connection pool settings based on production best practices
@@ -42,12 +45,13 @@ func NewConnection(ctx context.Context, connectionString string) (*pgxpool.Pool,
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrConnectionPoolCreation, err)
+		return nil, fmt.Errorf("%w: %w", ErrConnectionPoolCreation, err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseConnection, err)
+
+		return nil, fmt.Errorf("%w: %w", ErrDatabaseConnection, err)
 	}
 
 	return pool, nil

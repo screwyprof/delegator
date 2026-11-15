@@ -1,10 +1,11 @@
+// Package dbrow is the row shape the web store scans delegations into.
 package dbrow
 
 import (
 	"time"
 )
 
-// Delegation represents a delegation record as queried from the database
+// Delegation represents a delegation record as queried from the database.
 type Delegation struct {
 	ID        int64     `db:"id"`
 	Timestamp time.Time `db:"timestamp"`

@@ -10,6 +10,11 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
+// selectDelegations is the column list every delegations query starts with.
+const selectDelegations = "SELECT id, timestamp, amount, delegator, level FROM delegations "
+
+// The builder emits the exact SQL for each pagination mode: page numbers with OFFSET, and
+// cursor seeks in either direction, always in the tie-broken (timestamp, id) order.
 func TestDelegationsQueryBuilder(t *testing.T) {
 	t.Parallel()
 
@@ -25,25 +30,26 @@ func TestDelegationsQueryBuilder(t *testing.T) {
 		{
 			name:     "first page orders by timestamp then id, newest first",
 			criteria: tezos.DelegationsCriteria{Page: 1, Size: 50},
-			wantSQL:  "SELECT id, timestamp, amount, delegator, level FROM delegations ORDER BY timestamp DESC, id DESC LIMIT $1",
+			wantSQL:  selectDelegations + "ORDER BY timestamp DESC, id DESC LIMIT $1",
 			wantArgs: []any{uint64(51)},
 		},
 		{
 			name:     "page number with year filter uses offset",
 			criteria: tezos.DelegationsCriteria{Year: 2025, Page: 3, Size: 10},
-			wantSQL:  "SELECT id, timestamp, amount, delegator, level FROM delegations WHERE year = $1 ORDER BY timestamp DESC, id DESC LIMIT $2 OFFSET $3",
+			wantSQL:  selectDelegations + "WHERE year = $1 ORDER BY timestamp DESC, id DESC LIMIT $2 OFFSET $3",
 			wantArgs: []any{uint64(2025), uint64(11), uint64(20)},
 		},
 		{
 			name:     "after cursor seeks past the position instead of offsetting",
 			criteria: tezos.DelegationsCriteria{Year: 2025, Page: 1, Size: 10, After: cursor},
-			wantSQL:  "SELECT id, timestamp, amount, delegator, level FROM delegations WHERE year = $1 AND (timestamp, id) < ($2, $3) ORDER BY timestamp DESC, id DESC LIMIT $4",
+			wantSQL: selectDelegations + "WHERE year = $1 AND (timestamp, id) < ($2, $3) " +
+				"ORDER BY timestamp DESC, id DESC LIMIT $4",
 			wantArgs: []any{uint64(2025), ts, int64(7), uint64(11)},
 		},
 		{
 			name:     "before cursor reads toward newer rows, nearest first",
 			criteria: tezos.DelegationsCriteria{Page: 1, Size: 10, Before: cursor},
-			wantSQL:  "SELECT id, timestamp, amount, delegator, level FROM delegations WHERE (timestamp, id) > ($1, $2) ORDER BY timestamp ASC, id ASC LIMIT $3",
+			wantSQL:  selectDelegations + "WHERE (timestamp, id) > ($1, $2) ORDER BY timestamp ASC, id ASC LIMIT $3",
 			wantArgs: []any{ts, int64(7), uint64(11)},
 		},
 	}

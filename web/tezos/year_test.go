@@ -10,6 +10,7 @@ import (
 	"github.com/screwyprof/delegator/web/tezos"
 )
 
+// Year 0 means no filter; otherwise it must fall between Tezos' launch and shortly after now.
 func TestParseYearFromUint64(t *testing.T) {
 	t.Parallel()
 
@@ -94,8 +95,8 @@ func TestParseYearFromUint64(t *testing.T) {
 				year, err := tezos.ParseYearFromUint64(tc.input)
 
 				// Assert
-				assert.Error(t, err)
-				assert.ErrorIs(t, err, tezos.ErrYearOutOfRange)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tezos.ErrYearOutOfRange)
 				assert.Equal(t, tezos.Year(0), year, "Should return zero value on error")
 			})
 		}
@@ -133,8 +134,8 @@ func TestParseYearFromUint64(t *testing.T) {
 				year, err := tezos.ParseYearFromUint64(tc.input)
 
 				// Assert
-				assert.Error(t, err)
-				assert.ErrorIs(t, err, tezos.ErrYearOutOfRange)
+				require.Error(t, err)
+				require.ErrorIs(t, err, tezos.ErrYearOutOfRange)
 				assert.Equal(t, tezos.Year(0), year, "Should return zero value on error")
 			})
 		}
@@ -182,8 +183,8 @@ func TestParseYearFromUint64(t *testing.T) {
 
 				// Assert
 				if tc.shouldError {
-					assert.Error(t, err)
-					assert.ErrorIs(t, err, tezos.ErrYearOutOfRange)
+					require.Error(t, err)
+					require.ErrorIs(t, err, tezos.ErrYearOutOfRange)
 					assert.Equal(t, tezos.Year(0), year)
 				} else {
 					require.NoError(t, err)
@@ -195,6 +196,7 @@ func TestParseYearFromUint64(t *testing.T) {
 	})
 }
 
+// A Year converts back to the number it was made from.
 func TestYear_Uint64(t *testing.T) {
 	t.Parallel()
 

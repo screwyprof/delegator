@@ -1,3 +1,5 @@
+// Package migratortest creates isolated, migrated PostgreSQL databases for tests via pgtestdb,
+// configured by TEST_DATABASE_URL.
 package migratortest
 
 import (
@@ -20,7 +22,7 @@ import (
 // it knows nothing about checkpoints or any other domain-specific bootstrap data; callers
 // that need those (see scraper/testcfg) pass them in explicitly.
 type config struct {
-	DatabaseURL string `env:"TEST_DATABASE_URL" envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"`
+	DatabaseURL string `env:"TEST_DATABASE_URL" envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"` //nolint:lll // a struct tag can't be wrapped
 }
 
 func newConfig() config {
