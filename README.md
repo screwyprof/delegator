@@ -21,6 +21,7 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
 2. Watch the scraper in action: `docker compose logs -f scraper`
 3. **Query the API:**
    * **Happy path:** `curl "localhost:8080/xtz/delegations?page=2&per_page=10&year=2025"`
+   * **Next pages:** `curl -i "localhost:8080/xtz/delegations?per_page=10"` and follow the `Link` header's `rel="next"` URL. Like GitHub's API, links carry opaque cursors (`after`/`before`), so paging never skips or repeats delegations while new ones arrive.
    * **Error example:** `curl "localhost:8080/xtz/delegations?page=1&per_page=10&year=2100"`
 
 ## 🧪 Running Tests & Quality Gates

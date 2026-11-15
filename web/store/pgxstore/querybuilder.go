@@ -2,6 +2,7 @@ package pgxstore
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/screwyprof/delegator/web/tezos"
 )
@@ -13,8 +14,9 @@ const (
 
 // DelegationsQueryBuilder provides a domain-specific language for building delegation queries
 type DelegationsQueryBuilder struct {
-	sql  string
-	args []any
+	sql   string
+	where []string
+	args  []any
 }
 
 // NewDelegationsQuery creates a new delegation query builder
@@ -28,7 +30,8 @@ func NewDelegationsQuery() *DelegationsQueryBuilder {
 func (q *DelegationsQueryBuilder) ForCriteria(criteria tezos.DelegationsCriteria) *DelegationsQueryBuilder {
 	return q.
 		filterByYear(criteria.Year).
-		orderByTimestampDesc().
+		seekFromCursor(criteria).
+		orderByPosition(criteria).
 		paginateWithDetection(criteria)
 }
 
@@ -40,9 +43,29 @@ func (q *DelegationsQueryBuilder) filterByYear(year tezos.Year) *DelegationsQuer
 	return q
 }
 
-// orderByTimestampDesc adds timestamp ordering (most recent first)
-func (q *DelegationsQueryBuilder) orderByTimestampDesc() *DelegationsQueryBuilder {
-	q.sql += " ORDER BY timestamp DESC"
+// seekFromCursor restricts the query to delegations strictly past the cursor's position.
+// The (timestamp, id) row comparison matches the ordering exactly, so it's served by the
+// (…, timestamp DESC, id DESC) indexes instead of scanning past skipped rows like OFFSET.
+func (q *DelegationsQueryBuilder) seekFromCursor(criteria tezos.DelegationsCriteria) *DelegationsQueryBuilder {
+	switch {
+	case criteria.After != nil:
+		q.addWhereCondition("(timestamp, id) < ($%d, $%d)", criteria.After.Timestamp, criteria.After.ID)
+	case criteria.Before != nil:
+		q.addWhereCondition("(timestamp, id) > ($%d, $%d)", criteria.Before.Timestamp, criteria.Before.ID)
+	}
+	return q
+}
+
+// orderByPosition orders most recent first, with id breaking timestamp ties so the order
+// (and therefore every page boundary) is deterministic. Seeking backward from a Before
+// cursor reads the opposite way so LIMIT keeps the rows nearest the cursor; the store
+// reverses them back to most recent first.
+func (q *DelegationsQueryBuilder) orderByPosition(criteria tezos.DelegationsCriteria) *DelegationsQueryBuilder {
+	if criteria.SeeksBackward() {
+		q.sql = q.withWhere() + " ORDER BY timestamp ASC, id ASC"
+	} else {
+		q.sql = q.withWhere() + " ORDER BY timestamp DESC, id DESC"
+	}
 	return q
 }
 
@@ -68,14 +91,23 @@ func (q *DelegationsQueryBuilder) Build() (string, []any) {
 
 // Helper methods for building SQL
 
-// addWhereCondition adds a WHERE condition (assumes only one condition)
-// NOTE: If multiple WHERE conditions are needed in the future, implement AND logic:
-//
-//	if strings.Contains(q.sql, " WHERE ") { q.sql += " AND " } else { q.sql += " WHERE " }
-func (q *DelegationsQueryBuilder) addWhereCondition(sqlClause string, value any) {
-	placeholder := q.nextPlaceholder()
-	q.sql += " WHERE " + fmt.Sprintf(sqlClause, placeholder)
-	q.args = append(q.args, value)
+// addWhereCondition records a WHERE condition; conditions are ANDed together when the
+// clause is rendered. sqlClause has one %d per value, each replaced by its placeholder.
+func (q *DelegationsQueryBuilder) addWhereCondition(sqlClause string, values ...any) {
+	placeholders := make([]any, len(values))
+	for i, value := range values {
+		placeholders[i] = q.nextPlaceholder()
+		q.args = append(q.args, value)
+	}
+	q.where = append(q.where, fmt.Sprintf(sqlClause, placeholders...))
+}
+
+// withWhere returns the SQL so far with the WHERE clause rendered
+func (q *DelegationsQueryBuilder) withWhere() string {
+	if len(q.where) == 0 {
+		return q.sql
+	}
+	return q.sql + " WHERE " + strings.Join(q.where, " AND ")
 }
 
 // addParameter adds a SQL clause with a parameter

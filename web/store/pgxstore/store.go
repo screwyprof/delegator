@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgxc "github.com/zolstein/pgx-collect"
@@ -64,17 +65,17 @@ func (f *DelegationsFinder) FindDelegations(ctx context.Context, criteria tezos.
 		delegations = append(delegations, delegation)
 	}
 
-	// Determine if there are more pages using LIMIT n+1 technique
-	hasMore := len(delegations) > int(criteria.ItemsPerPage())
-	if hasMore {
+	// Determine if there are more rows in the read direction using LIMIT n+1 technique
+	overflowed := len(delegations) > int(criteria.ItemsPerPage())
+	if overflowed {
 		// Remove the extra record we requested to detect "has more"
 		delegations = delegations[:criteria.ItemsPerPage()]
 	}
 
-	return &tezos.DelegationsPage{
-		Delegations: delegations,
-		HasMore:     hasMore,
-		Number:      criteria.Page,
-		Size:        criteria.Size,
-	}, nil
+	// Seeking backward reads oldest-first (nearest the cursor first); pages are newest-first
+	if criteria.SeeksBackward() {
+		slices.Reverse(delegations)
+	}
+
+	return tezos.NewDelegationsPage(criteria, delegations, overflowed), nil
 }

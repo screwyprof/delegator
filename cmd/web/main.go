@@ -58,7 +58,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Register handlers with real store
-	tezosHandler := handler.NewTezosGetDelegations(store)
+	tezosHandler := handler.NewTezosGetDelegations(store, handler.WithPublicURL(&cfg.PublicURL))
 	tezosHandler.AddRoutes(mux)
 
 	// Wrap with logging middleware

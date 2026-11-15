@@ -92,6 +92,7 @@ services:
       WEB_DATABASE_URL: postgres://delegator:delegator@postgres:5432/delegator?sslmode=disable
       WEB_HTTP_HOST: 0.0.0.0
       WEB_HTTP_PORT: "8080"
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_HUMAN_FRIENDLY: ${LOG_HUMAN_FRIENDLY:-false}
     ports:

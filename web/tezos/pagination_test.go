@@ -2,6 +2,7 @@ package tezos_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -312,84 +313,56 @@ func TestPerPage_Uint64(t *testing.T) {
 	}
 }
 
-func TestDelegationsPage_HasNext(t *testing.T) {
+func TestNewDelegationsPage(t *testing.T) {
 	t.Parallel()
 
+	cursor := &tezos.Cursor{Timestamp: time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC), ID: 5}
+	rows := []tezos.Delegation{{ID: 9}, {ID: 8}}
+
 	testCases := []struct {
-		name        string
-		hasMore     bool
-		expectedVal bool
+		name         string
+		criteria     tezos.DelegationsCriteria
+		delegations  []tezos.Delegation
+		overflowed   bool
+		wantNext     bool
+		wantPrevious bool
+		wantFirst    bool
 	}{
-		{
-			name:        "has more pages",
-			hasMore:     true,
-			expectedVal: true,
-		},
-		{
-			name:        "no more pages",
-			hasMore:     false,
-			expectedVal: false,
-		},
+		{name: "first page with more rows", criteria: tezos.DelegationsCriteria{Page: 1}, delegations: rows, overflowed: true, wantNext: true, wantPrevious: false, wantFirst: false},
+		{name: "first page that fits", criteria: tezos.DelegationsCriteria{Page: 1}, delegations: rows, overflowed: false, wantNext: false, wantPrevious: false, wantFirst: false},
+		{name: "later page number", criteria: tezos.DelegationsCriteria{Page: 3}, delegations: rows, overflowed: false, wantNext: false, wantPrevious: true, wantFirst: true},
+		{name: "after a cursor with more rows", criteria: tezos.DelegationsCriteria{After: cursor}, delegations: rows, overflowed: true, wantNext: true, wantPrevious: true, wantFirst: true},
+		{name: "after a cursor, last page", criteria: tezos.DelegationsCriteria{After: cursor}, delegations: rows, overflowed: false, wantNext: false, wantPrevious: true, wantFirst: true},
+		{name: "before a cursor with newer rows beyond", criteria: tezos.DelegationsCriteria{Before: cursor}, delegations: rows, overflowed: true, wantNext: true, wantPrevious: true, wantFirst: true},
+		{name: "before a cursor, reaching the newest", criteria: tezos.DelegationsCriteria{Before: cursor}, delegations: rows, overflowed: false, wantNext: true, wantPrevious: false, wantFirst: true},
+		{name: "empty page past the end keeps only first", criteria: tezos.DelegationsCriteria{Page: 999}, delegations: nil, overflowed: false, wantNext: false, wantPrevious: false, wantFirst: true},
+		{name: "empty cursor page keeps only first", criteria: tezos.DelegationsCriteria{After: cursor}, delegations: nil, overflowed: false, wantNext: false, wantPrevious: false, wantFirst: true},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Arrange
-			page := &tezos.DelegationsPage{HasMore: tc.hasMore}
-
 			// Act
-			result := page.HasNext()
+			page := tezos.NewDelegationsPage(tc.criteria, tc.delegations, tc.overflowed)
 
 			// Assert
-			assert.Equal(t, tc.expectedVal, result)
+			assert.Equal(t, tc.wantNext, page.HasNext(), "HasNext")
+			assert.Equal(t, tc.wantPrevious, page.HasPrevious(), "HasPrevious")
+			assert.Equal(t, tc.wantFirst, page.HasFirst(), "HasFirst")
 		})
 	}
 }
 
-func TestDelegationsPage_HasPrevious(t *testing.T) {
+func TestDelegationsPage_Cursors(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name        string
-		pageNumber  tezos.Page
-		expectedVal bool
-	}{
-		{
-			name:        "first page",
-			pageNumber:  tezos.Page(1),
-			expectedVal: false,
-		},
-		{
-			name:        "second page",
-			pageNumber:  tezos.Page(2),
-			expectedVal: true,
-		},
-		{
-			name:        "high page number",
-			pageNumber:  tezos.Page(10),
-			expectedVal: true,
-		},
-		{
-			name:        "zero page (edge case)",
-			pageNumber:  tezos.Page(0),
-			expectedVal: false,
-		},
-	}
+	// Arrange
+	newest := tezos.Delegation{ID: 9, Timestamp: time.Date(2025, 1, 15, 10, 0, 9, 0, time.UTC)}
+	oldest := tezos.Delegation{ID: 7, Timestamp: time.Date(2025, 1, 15, 10, 0, 5, 0, time.UTC)}
+	page := tezos.NewDelegationsPage(tezos.DelegationsCriteria{Page: 1}, []tezos.Delegation{newest, {ID: 8}, oldest}, true)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Arrange
-			page := &tezos.DelegationsPage{Number: tc.pageNumber}
-
-			// Act
-			result := page.HasPrevious()
-
-			// Assert
-			assert.Equal(t, tc.expectedVal, result)
-		})
-	}
+	// Act & Assert
+	assert.Equal(t, tezos.CursorOf(oldest), page.NextCursor(), "Next page continues after the oldest row shown")
+	assert.Equal(t, tezos.CursorOf(newest), page.PreviousCursor(), "Previous page reads back from the newest row shown")
 }

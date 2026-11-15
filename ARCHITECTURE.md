@@ -98,11 +98,12 @@ Polling Phase: Continuous monitoring for new delegations
 **API Design**:
 ```
 GET /xtz/delegations?page=1&per_page=50&year=2025
+GET /xtz/delegations?per_page=50&year=2025&after=<cursor from rel="next">
 ```
 
 **Key Features**:
 - **Performance optimization**: LIMIT n+1 technique, dual-index strategy
-- **Pagination**: GitHub-style with Link headers (rel="prev", rel="next")
+- **Pagination**: GitHub-style hybrid. Requests may use `page` numbers, but `Link` headers (absolute `rel="first"`, `rel="prev"`, `rel="next"`) carry opaque `after`/`before` cursors encoding a delegation's (timestamp, id) position. Rows are ordered `timestamp DESC, id DESC`; id breaks the frequent timestamp ties (every delegation in a block shares one), so the order is total and following links never skips or repeats rows, even while the scraper inserts. Link URLs are absolute, built from `WEB_PUBLIC_URL` when set (e.g. behind a reverse proxy) or the request host otherwise; client-supplied `X-Forwarded-*` headers are never trusted. A cursor is bound to the `year` it was issued for; replaying it with another filter, combining it with `page`, or sending both cursors is a 400.
 - **Error handling**: Structured JSON errors with proper HTTP status codes
 - **Request logging**: Comprehensive request/response middleware
 - **Domain validation**: Value objects (`Page`, `PerPage`, `Year`) with rich validation
@@ -133,11 +134,10 @@ CREATE TABLE scraper_checkpoint (
     last_id BIGINT NOT NULL
 );
 
--- Create standalone timestamp index for default queries without year filtering
-CREATE INDEX IF NOT EXISTS idx_delegations_timestamp ON delegations (timestamp DESC); 
-
--- Create composite index for optimal year filtering and pagination
-CREATE INDEX IF NOT EXISTS idx_delegations_year_timestamp ON delegations (year, timestamp DESC); 
+-- Pagination sort key (timestamp DESC, id DESC), unfiltered and per year. Covering the full
+-- key serves both the ORDER BY and the (timestamp, id) cursor comparison from the index.
+CREATE INDEX IF NOT EXISTS idx_delegations_timestamp_id ON delegations (timestamp DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_delegations_year_timestamp_id ON delegations (year, timestamp DESC, id DESC);
 ```
 
 **Performance Impact**: Direct year column filtering vs `EXTRACT(YEAR)` eliminates full table scans
@@ -318,7 +318,6 @@ The system follows [twelve-factor app](https://12factor.net) methodology with **
 
 ### 10.4 Security & Performance
 - Security features (TLS, auth, input validation)
-- Cursor-based pagination for large datasets
 - Read replicas and connection pooling optimization
 
 ### 10.5 Architecture Evolution

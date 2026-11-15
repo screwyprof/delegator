@@ -130,7 +130,7 @@ Expose collected delegation data via HTTP endpoint `GET /xtz/delegations` with p
 | Area | Decision | Rationale |
 |------|----------|-----------|
 | **Package layout** | `web/api` (contracts) → `web/handler/bind` (HTTP parsing) → `web/handler` (orchestration) | Keeps request/response shaping separate from business logic—easy to unit-test each slice. |
-| **Pagination style** | GitHub-style `page`/`per_page` with `Link` headers | Familiar UX and simple to implement; no cursor complexity needed for demo scale. |
+| **Pagination style** | GitHub-style hybrid: `page`/`per_page` in, cursor `Link` headers out | Familiar UX for the first request; cursors make following links gap-free (see §4.4 update). |
 | **Error strategy** | Dual-path: user-safe messages on 4xx, generic message on 5xx + full details in structured logs | Protects internals while keeping developers productive and clients informed. |
 
 ### 4.3 Environment Variables
@@ -166,10 +166,12 @@ curl -I "https://api.github.com/repos/octocat/Spoon-Knife/issues?page=5&per_page
 
 **Bottom line**: We chose honest simplicity over hidden complexity. Our OFFSET approach is transparent, predictable, and plenty fast for demo scale. Sometimes the best engineering decision is the one you can explain in 30 seconds. 🎯
 
-### 4.5 Database Optimization Decision
-Dual indexes (timestamp DESC) and (year, timestamp DESC) turned multi-second scans into sub-millisecond look-ups—​a ~1,700× win.
+**Update — the plot twist was right**: on the full 788k-row history, OFFSET paging had two real defects. (1) `ORDER BY timestamp` alone isn't a total order: 27% of delegations share a block timestamp with others (up to 106 at once), and Postgres gives no guaranteed order within a tie, so page boundaries inside a tie could skip or repeat rows whenever the plan changed (it does switch, e.g. deep into `year=2025`). (2) Every delegation the scraper inserts shifts all later offsets, so a client paging along repeats a row and never sees the new one; reproduced against the live API with a single insert. We adopted the GitHub hybrid: `page` still works for the first request, but `rel="next"`/`rel="prev"` links carry opaque cursors over `(timestamp DESC, id DESC)`. Walking all 7,880 pages via `next` while inserting now returns every delegation exactly once, and a page at depth costs 0.8 ms instead of 51 ms.
 
-**Pagination Implementation**: Uses LIMIT n+1 technique for efficiency - requests pageSize+1 records to detect "has more" without expensive COUNT queries. Simplified Link headers (rel="prev" and rel="next" only) match GitHub's actual API behavior, providing 35x performance gain by omitting COUNT-based "last" links.
+### 4.5 Database Optimization Decision
+Dual indexes (timestamp DESC) and (year, timestamp DESC) turned multi-second scans into sub-millisecond look-ups—​a ~1,700× win. They later gained `id DESC` as a trailing key (migration 003) to match the tie-broken pagination order and serve cursor seeks directly.
+
+**Pagination Implementation**: Uses LIMIT n+1 technique for efficiency - requests pageSize+1 records to detect "has more" without expensive COUNT queries. Link headers carry `rel="first"`, `rel="prev"` and `rel="next"` (cursor-based) and, like GitHub's, omit the COUNT-based `rel="last"` — a 35x performance gain.
 
 ---
 

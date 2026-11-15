@@ -2,6 +2,7 @@ package tezos_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -330,5 +331,57 @@ func TestDelegationsCriteria_Integration(t *testing.T) {
 		// Verify calculations with defaults
 		assert.Equal(t, uint64(tezos.DefaultPerPage), criteria.ItemsPerPage())
 		assert.Equal(t, uint64(0), criteria.ItemsToSkip(), "First page skips 0 items")
+	})
+}
+
+func TestNewDelegationsCriteria_Cursors(t *testing.T) {
+	t.Parallel()
+
+	cursor := &tezos.Cursor{Timestamp: time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC), ID: 5}
+
+	t.Run("it pages after a cursor without skipping rows", func(t *testing.T) {
+		t.Parallel()
+
+		criteria, err := tezos.NewDelegationsCriteria(0, 0, 10, tezos.After(cursor))
+
+		require.NoError(t, err)
+		assert.Equal(t, cursor, criteria.After)
+		assert.False(t, criteria.SeeksBackward())
+		assert.Zero(t, criteria.ItemsToSkip(), "Cursor pagination must not use OFFSET")
+	})
+
+	t.Run("it pages before a cursor backward", func(t *testing.T) {
+		t.Parallel()
+
+		criteria, err := tezos.NewDelegationsCriteria(0, 0, 10, tezos.Before(cursor))
+
+		require.NoError(t, err)
+		assert.Equal(t, cursor, criteria.Before)
+		assert.True(t, criteria.SeeksBackward())
+		assert.Zero(t, criteria.ItemsToSkip())
+	})
+
+	t.Run("it treats nil cursors as absent", func(t *testing.T) {
+		t.Parallel()
+
+		criteria, err := tezos.NewDelegationsCriteria(0, 3, 10, tezos.After(nil), tezos.Before(nil))
+
+		require.NoError(t, err)
+		assert.Nil(t, criteria.After)
+		assert.Nil(t, criteria.Before)
+		assert.Equal(t, uint64(20), criteria.ItemsToSkip())
+	})
+
+	t.Run("it rejects conflicting pagination parameters", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := tezos.NewDelegationsCriteria(0, 0, 10, tezos.After(cursor), tezos.Before(cursor))
+		assert.ErrorIs(t, err, tezos.ErrConflictingPagination, "after with before")
+
+		_, err = tezos.NewDelegationsCriteria(0, 2, 10, tezos.After(cursor))
+		assert.ErrorIs(t, err, tezos.ErrConflictingPagination, "page with after")
+
+		_, err = tezos.NewDelegationsCriteria(0, 2, 10, tezos.Before(cursor))
+		assert.ErrorIs(t, err, tezos.ErrConflictingPagination, "page with before")
 	})
 }
