@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -206,6 +207,27 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		assertSelectParameterContainsAllRequiredFields(t, err, requestURL)
 	})
 
+	t.Run("it requests delegations in ascending id order", func(t *testing.T) {
+		t.Parallel()
+
+		// Arrange
+		var requestURL string
+		server := newURLTrackingServer(t, &requestURL)
+		defer server.Close()
+
+		client := newClientWithServer(server)
+		idFilter := int64(12345)
+
+		// Act
+		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
+			Limit:         10,
+			IDGreaterThan: &idFilter,
+		})
+
+		// Assert
+		assertSortedByAscendingID(t, err, requestURL)
+	})
+
 	t.Run("it excludes id.gt parameter when nil", func(t *testing.T) {
 		t.Parallel()
 
@@ -394,6 +416,18 @@ func assertSelectParameterContainsAllRequiredFields(t *testing.T, err error, req
 		assert.Contains(t, requestURL, field,
 			"Expected select parameter to include required field: %s", field)
 	}
+}
+
+// assertSortedByAscendingID checks the request pins TzKT's order rather than relying on its
+// default: with id.gt + limit, only ascending order returns the next contiguous batch, and
+// callers checkpoint on the last delegation's id
+func assertSortedByAscendingID(t *testing.T, err error, requestURL string) {
+	t.Helper()
+	require.NoError(t, err)
+
+	u, parseErr := url.Parse(requestURL)
+	require.NoError(t, parseErr)
+	assert.Equal(t, "id", u.Query().Get("sort.asc"), "Expected an explicit ascending id sort")
 }
 
 func assertIDFilterNotPresent(t *testing.T, err error, requestURL string) {

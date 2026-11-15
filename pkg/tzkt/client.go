@@ -18,6 +18,10 @@ const (
 	delegationsPath  = "/v1/operations/delegations"
 	queryParamLimit  = "limit"
 	queryParamSelect = "select"
+	// Pin ascending id order instead of relying on TzKT's default: with id.gt + limit only
+	// ascending order returns the next contiguous batch, and callers checkpoint on the last id
+	queryParamSortAsc = "sort.asc"
+	sortByID          = "id"
 	// Select only necessary fields to minimize payload
 	defaultSelectFields = "id,timestamp,amount,sender,level"
 )
@@ -116,6 +120,7 @@ func (c *Client) buildDelegationsURL(req DelegationsRequest) string {
 	params := url.Values{}
 	params.Set(queryParamLimit, strconv.FormatUint(uint64(req.Limit), 10))
 	params.Set(queryParamSelect, defaultSelectFields)
+	params.Set(queryParamSortAsc, sortByID)
 
 	// Add filtering parameters
 	if req.IDGreaterThan != nil {
