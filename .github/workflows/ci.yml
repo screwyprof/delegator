@@ -1,0 +1,80 @@
+name: CI
+
+# Who can run what:
+#
+# - push: branches in this repository. Only collaborators can push here.
+# - pull_request: PRs, including from forks. GitHub runs a fork's code with a read-only
+#   GITHUB_TOKEN and without repository secrets, so a malicious PR can't write to the repo or
+#   read anything private. Same-repo PRs are skipped below: their branch already ran on push.
+#
+# Never pull_request_target: it runs with this repository's write token and secrets, and combined
+# with checking out the PR's code it hands both to whoever opened the PR.
+#
+# Abuse of the free runners themselves (crypto mining in a PR) is limited by the repository
+# setting "Require approval for all external contributors" (Settings > Actions > General), which
+# makes a maintainer approve each outside PR's run before it starts, and by timeout-minutes below.
+on:
+  push:
+  pull_request:
+
+# Read-only for every job, whatever triggered it.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # One job running the same `make` a developer runs, so CI and a laptop can't drift apart.
+  check:
+    # Skip PRs whose branch lives in this repo: the push trigger already tested that commit.
+    if: >-
+      github.event_name == 'push'
+      || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Actions are pinned to commit SHAs, not tags: a tag can be moved to different code, a SHA
+      # can't. The comment names the release each SHA is.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes, so the token stays out of .git/config, where `make` (which runs
+          # the PR's code and freshly bumped dependencies) could read it.
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # The exact patch go.work and the go.mod files name. 1.27.0 and 1.27.1 miscount
+          # statements in coverage (golang/go#80974).
+          go-version: '1.27.3'
+          # A PR run can read the default branch's cache but only writes to its own scope, so a
+          # fork can't poison what main's runs use.
+          cache: true
+          cache-dependency-path: '**/go.sum'
+
+      # The project's own compose file, so CI runs the same Postgres as `make` does locally
+      # (tmpfs, fsync off). A `services:` container couldn't pass those flags. --wait blocks until
+      # the healthcheck passes.
+      - name: Start Postgres
+        run: docker compose up -d --wait postgres
+
+      # fmt, lint (golangci-lint pinned in the Makefile, fetched with `go run`), all tests including
+      # acceptance, and the build. `shell: bash` means `bash -eo pipefail`.
+      #
+      # The acceptance tests also call the live TzKT API, so a TzKT outage fails this step.
+      - name: make
+        shell: bash
+        run: make
+
+      # `make` formats code and tidies modules in place; on a clean commit that changes nothing.
+      # Anything it did change was committed unformatted or untidy.
+      - name: Check make left the tree clean
+        run: git diff --exit-code
+
+      - name: Coverage
+        shell: bash
+        run: make coverage
