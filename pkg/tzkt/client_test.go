@@ -23,8 +23,20 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Arrange
 		expectedDelegations := []tzkt.Delegation{
-			createTestDelegation(1098907648, int64(109), "2018-06-30T19:30:27Z", "tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd", 25079312620),
-			createTestDelegation(1649410048, int64(167), "2018-06-30T20:29:42Z", "tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft", 10199999690),
+			createTestDelegation(
+				1098907648,
+				int64(109),
+				"2018-06-30T19:30:27Z",
+				"tz1Wit2PqodvPeuRRhdQXmkrtU8e8bRYZecd",
+				25079312620,
+			),
+			createTestDelegation(
+				1649410048,
+				int64(167),
+				"2018-06-30T20:29:42Z",
+				"tz1U2ufqFdVkN2RdYormwHtgm3ityYY1uqft",
+				10199999690,
+			),
 		}
 
 		server := httptest.NewServer(successHandler(t, expectedDelegations))

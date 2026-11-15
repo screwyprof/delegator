@@ -10,9 +10,9 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
 
 ---
 ## 🔧 Prerequisites
-* **Go** ≥ 1.24
+* **Go** ≥ 1.27.2 (1.27.0 and 1.27.1 miscount coverage, [golang/go#80974](https://github.com/golang/go/issues/80974)); go.work pins 1.27.3
 * **Docker** + **Docker Compose**
-* **Nix + direnv** (optional for nix lovers :) 
+* **Nix + direnv** (optional): `nix develop` / `use flake` pins Go and adds gopls, delve and pre-commit, and installs the git hooks on entry
 
 ## 🚀 Quick Start
 💡 **Tip:** Run `make help` to see all available commands and targets.
@@ -25,7 +25,7 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
    * **Error example:** `curl "localhost:8080/xtz/delegations?page=1&per_page=10&year=2100"`
 
 ## 🧪 Running Tests & Quality Gates
-1. **Install dev tools** (first-time only): `make deps`
+1. **Dev tools**: nothing to install. The Makefile pins golangci-lint and go-cover-treemap and runs them with `go run pkg@version` (compiled on first use, then cached), never from your PATH. Optionally `make hooks` installs the pre-commit hooks (needs `pre-commit`)
 2. **Start Postgres** (acceptance tests need a real database): `docker compose up -d postgres`
 3. **Format, lint, and run tests**: `make check`
 4. **View coverage**:

@@ -33,7 +33,14 @@ func TestTzktClientRealAPI(t *testing.T) {
 
 	// Assert - Verify we get valid delegation data structure
 	require.NoError(t, err)
-	assert.Len(t, delegations, int(testCfg.Limit), "Expected exactly %d delegations with limit=%d", testCfg.Limit, testCfg.Limit)
+	assert.Len(
+		t,
+		delegations,
+		int(testCfg.Limit),
+		"Expected exactly %d delegations with limit=%d",
+		testCfg.Limit,
+		testCfg.Limit,
+	)
 
 	// Verify each delegation has required fields with valid data
 	for i, delegation := range delegations {

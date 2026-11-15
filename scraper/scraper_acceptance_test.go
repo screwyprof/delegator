@@ -63,7 +63,11 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 }
 
 // runScraperUntilPollingStarts executes the scraper and returns backfill results
-func runScraperUntilPollingStarts(t *testing.T, service *scraper.Service, shutdownTimeout time.Duration) scraper.BackfillDone {
+func runScraperUntilPollingStarts(
+	t *testing.T,
+	service *scraper.Service,
+	shutdownTimeout time.Duration,
+) scraper.BackfillDone {
 	t.Helper()
 
 	// Create cancellable context for service
@@ -109,7 +113,12 @@ func runScraperUntilPollingStarts(t *testing.T, service *scraper.Service, shutdo
 func assertBackfillSucceeded(t *testing.T, backfillResult scraper.BackfillDone) {
 	t.Helper()
 
-	assert.GreaterOrEqual(t, backfillResult.TotalProcessed, int64(0), "Backfill should process zero or more delegations")
+	assert.GreaterOrEqual(
+		t,
+		backfillResult.TotalProcessed,
+		int64(0),
+		"Backfill should process zero or more delegations",
+	)
 	assert.Positive(t, backfillResult.Duration, "Backfill should take measurable time")
 }
 
@@ -121,7 +130,9 @@ func assertDataWasStoredCorrectly(t *testing.T, testDB *pgxpool.Pool) func(scrap
 		ctx := t.Context()
 
 		if backfillResult.TotalProcessed == 0 {
-			t.Error("No delegations were processed - this may indicate checkpoint is too far in future or doesn't exist")
+			t.Error(
+				"No delegations were processed - this may indicate checkpoint is too far in future or doesn't exist",
+			)
 			return
 		}
 
@@ -154,7 +165,12 @@ func assertCheckpointAdvanced(t *testing.T, testDB *pgxpool.Pool, ctx context.Co
 }
 
 // assertFirstDelegationAfterCheckpoint verifies first delegation ID is greater than checkpoint
-func assertFirstDelegationAfterCheckpoint(t *testing.T, testDB *pgxpool.Pool, ctx context.Context, startCheckpoint int64) {
+func assertFirstDelegationAfterCheckpoint(
+	t *testing.T,
+	testDB *pgxpool.Pool,
+	ctx context.Context,
+	startCheckpoint int64,
+) {
 	t.Helper()
 
 	var firstID int64

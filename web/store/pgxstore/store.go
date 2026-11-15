@@ -35,7 +35,10 @@ func New(pool *pgxpool.Pool) (*DelegationsFinder, func()) {
 
 // FindDelegations queries delegations based on the provided criteria
 // Uses LIMIT n+1 technique for efficient pagination without separate count query
-func (f *DelegationsFinder) FindDelegations(ctx context.Context, criteria tezos.DelegationsCriteria) (*tezos.DelegationsPage, error) {
+func (f *DelegationsFinder) FindDelegations(
+	ctx context.Context,
+	criteria tezos.DelegationsCriteria,
+) (*tezos.DelegationsPage, error) {
 	query, args := NewDelegationsQuery().
 		ForCriteria(criteria).
 		Build()

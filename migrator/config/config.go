@@ -18,7 +18,7 @@ type Config struct {
 	InitialCheckpoint uint64 `env:"MIGRATOR_INITIAL_CHECKPOINT" envDefault:"0"`
 
 	// Logging configuration
-	LogLevel         string `env:"LOG_LEVEL" envDefault:"info"`
+	LogLevel         string `env:"LOG_LEVEL"          envDefault:"info"`
 	LogHumanFriendly bool   `env:"LOG_HUMAN_FRIENDLY" envDefault:"false"`
 
 	// Migration operation timeout

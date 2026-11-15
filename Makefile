@@ -57,7 +57,7 @@ SHELL := bash
 .DEFAULT_GOAL := all
 
 # Declare all phony targets upfront
-.PHONY: help deps tools clean all
+.PHONY: help hooks clean all
 .PHONY: fmt lint check test coverage coverage-html coverage-svg
 .PHONY: sync-modules update-modules verify-modules
 .PHONY: build
@@ -76,18 +76,23 @@ help: ## Show this help screen
 # Development Tools
 #
 
-TOOLS := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
-	github.com/nikolaydubina/go-cover-treemap@latest
+# Every tool is fetched by `go run pkg@version` at the version named here, so this block is the
+# whole toolchain. Never from PATH: a pin that defers to whatever is installed is a pin that lies
+# (a nix golangci-lint built against an older x/tools is exactly what failed on go1.27.3).
+# Nor from go.mod `tool` lines: those dragged ~220 of the linter's own dependencies into the
+# root module, so every bump rewrote go.mod. The first run compiles each tool; later runs are
+# cached. The `# renovate:` lines let a bot read pins in a Makefile it would otherwise ignore.
+# renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
+GOLANGCI_VERSION := v2.15.0
+# renovate: datasource=go depName=github.com/nikolaydubina/go-cover-treemap
+TREEMAP_VERSION := v1.5.1
 
-deps: ## Install development tools using Go's tool management
-	@echo -e "$(OK_COLOR)--> Installing development tools$(NO_COLOR)"
-	@for t in $(TOOLS); do \
-	  go get -tool $$t ; \
-	done
+GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+TREEMAP := go run github.com/nikolaydubina/go-cover-treemap@$(TREEMAP_VERSION)
 
-tools: ## List all installed development tools
-	@echo -e "$(OK_COLOR)--> Installed development tools:$(NO_COLOR)"
-	@go list tool
+hooks: ## Install git pre-commit hooks (needs pre-commit; the nix devShell does this on entry)
+	@echo -e "$(OK_COLOR)--> Installing pre-commit hooks$(NO_COLOR)"
+	@pre-commit install
 
 #
 # Module Management
@@ -115,11 +120,11 @@ verify-modules: ## Verify all modules are consistent and properly synced
 fmt: ## Format Go code and organize imports
 	@echo -e "$(OK_COLOR)--> Formatting Go code$(NO_COLOR)"
 	@$(MAKE) --no-print-directory sync-modules
-	@go tool golangci-lint fmt
+	@$(GOLANGCI) fmt
 
 lint: ## Run golangci-lint static analysis
 	@echo -e "$(OK_COLOR)--> Running static analysis$(NO_COLOR)"
-	@go tool golangci-lint run $(addsuffix /...,$(MODULE_DIRS))
+	@$(GOLANGCI) run $(addsuffix /...,$(MODULE_DIRS))
 
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
@@ -151,7 +156,7 @@ coverage-svg: coverage ## Generate SVG treemap visualization of coverage
 	@# `go tool cover -html` itself does (os.MkdirTemp("", "cover"), never removed) --
 	@# an ephemeral OS temp file, not a build artifact `clean` needs to track.
 	@svg="$$(mktemp -d)/coverage.svg"; \
-	 go tool go-cover-treemap -coverprofile coverage.out > "$$svg"; \
+	 $(TREEMAP) -coverprofile coverage.out > "$$svg"; \
 	 echo -e "$(OK_COLOR)--> SVG visualization: $$svg$(NO_COLOR)"; \
 	 xdg-open "$$svg" 2>/dev/null || open "$$svg" 2>/dev/null || echo "Open $$svg manually to view it"
 

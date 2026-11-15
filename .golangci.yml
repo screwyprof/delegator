@@ -1,11 +1,32 @@
+# https://golangci-lint.run/docs/configuration/file/
 version: "2"
+
 run:
+  # The acceptance test files are behind //go:build acceptance, and web's root package contains
+  # nothing else; without this the linters never see them.
   build-tags:
     - acceptance
+  modules-download-mode: readonly
+linters:
+  enable:
+    - nolintlint
+  settings:
+    # allow-unused off, so a directive that stops suppressing anything fails rather than sitting
+    # there and outliving the finding it was written for.
+    nolintlint:
+      allow-unused: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
 formatters:
   enable:
     - gofumpt
     - gci
+    - golines
   settings:
     gci:
       sections:
@@ -15,3 +36,8 @@ formatters:
       custom-order: true
     gofumpt:
       module-path: github.com/screwyprof/delegator
+    golines:
+      max-len: 120
+      tab-len: 4
+  exclusions:
+    generated: lax

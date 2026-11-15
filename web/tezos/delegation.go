@@ -95,7 +95,10 @@ func NewDelegationsCriteria(year, page, perPage uint64, opts ...CriteriaOption) 
 	}
 
 	if criteria.After != nil && criteria.Before != nil {
-		return DelegationsCriteria{}, fmt.Errorf("%w: after and before are mutually exclusive", ErrConflictingPagination)
+		return DelegationsCriteria{}, fmt.Errorf(
+			"%w: after and before are mutually exclusive",
+			ErrConflictingPagination,
+		)
 	}
 	if page != 0 && (criteria.After != nil || criteria.Before != nil) {
 		return DelegationsCriteria{}, fmt.Errorf("%w: page can't be combined with a cursor", ErrConflictingPagination)

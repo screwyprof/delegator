@@ -13,10 +13,10 @@ var ErrInvalidConfig = errors.New("invalid configuration")
 
 // Config holds all configuration loaded from environment variables
 type Config struct {
-	HTTPPort         string `env:"WEB_HTTP_PORT" envDefault:"8080"`
-	HTTPHost         string `env:"WEB_HTTP_HOST" envDefault:"localhost"`
-	DatabaseURL      string `env:"WEB_DATABASE_URL" envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"`
-	LogLevel         string `env:"LOG_LEVEL" envDefault:"info"`
+	HTTPPort         string `env:"WEB_HTTP_PORT"      envDefault:"8080"`
+	HTTPHost         string `env:"WEB_HTTP_HOST"      envDefault:"localhost"`
+	DatabaseURL      string `env:"WEB_DATABASE_URL"   envDefault:"postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable"`
+	LogLevel         string `env:"LOG_LEVEL"          envDefault:"info"`
 	LogHumanFriendly bool   `env:"LOG_HUMAN_FRIENDLY" envDefault:"false"`
 
 	// PublicURL is the base URL clients reach the API at (e.g. https://api.example.com), used
@@ -45,7 +45,11 @@ func validatePublicURL(u url.URL) error {
 		return nil
 	}
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("%w: WEB_PUBLIC_URL must be an absolute http(s) URL like https://api.example.com, got %q", ErrInvalidConfig, u.String())
+		return fmt.Errorf(
+			"%w: WEB_PUBLIC_URL must be an absolute http(s) URL like https://api.example.com, got %q",
+			ErrInvalidConfig,
+			u.String(),
+		)
 	}
 	return nil
 }

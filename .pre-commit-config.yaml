@@ -1,0 +1,36 @@
+# Hooks shell out to the Makefile rather than pinning tools themselves, so one config serves nix
+# and non-nix users alike and no tool version is duplicated here: golangci-lint (formatter and
+# linter both) is pinned once, as GOLANGCI_VERSION in the Makefile.
+#
+# `make hooks` installs these; the nix devShell does it on entry.
+repos:
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: format
+        entry: make fmt
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      # `work` covers every module in go.work; ./... would only build the root module.
+      - id: go-build
+        name: go build
+        entry: go build work
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-lint
+        name: golangci-lint
+        entry: make lint
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-mod-tidy
+        name: go mod tidy (all modules)
+        entry: make sync-modules
+        language: system
+        files: (^|/)(go\.mod|go\.sum|go\.work|.*\.go)$
+        pass_filenames: false

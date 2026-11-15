@@ -247,8 +247,11 @@ func createTestClock() *fakeClock {
 func apiWithDelegations(delegations ...tzkt.Delegation) *httptest.Server {
 	responses := make([]string, 0, len(delegations)+1)
 	for _, d := range delegations {
-		responses = append(responses, fmt.Sprintf(`[{"id":%d,"timestamp":"%s","amount":%d,"sender":{"address":"%s"},"level":%d}]`,
-			d.ID, d.Timestamp.Format(time.RFC3339), d.Amount, d.Sender.Address, d.Level))
+		responses = append(
+			responses,
+			fmt.Sprintf(`[{"id":%d,"timestamp":"%s","amount":%d,"sender":{"address":"%s"},"level":%d}]`,
+				d.ID, d.Timestamp.Format(time.RFC3339), d.Amount, d.Sender.Address, d.Level),
+		)
 	}
 	responses = append(responses, endOfBackfill())
 	return createTestServer(responses)
@@ -338,9 +341,30 @@ func assertDelegationsWereSaved(t *testing.T, savedBatchesCh chan []scraper.Dele
 	require.Len(t, allSaved, len(expected), "Expected %d delegations to be saved", len(expected))
 	for i, expectedDel := range expected {
 		assert.Equal(t, expectedDel.ID, allSaved[i].ID, "Delegation %d should have ID %d", i, expectedDel.ID)
-		assert.Equal(t, expectedDel.Sender.Address, allSaved[i].Delegator, "Delegation %d should have delegator %s", i, expectedDel.Sender.Address)
-		assert.Equal(t, expectedDel.Amount, allSaved[i].Amount, "Delegation %d should have amount %d", i, expectedDel.Amount)
-		assert.Equal(t, expectedDel.Level, allSaved[i].Level, "Delegation %d should have level %d", i, expectedDel.Level)
+		assert.Equal(
+			t,
+			expectedDel.Sender.Address,
+			allSaved[i].Delegator,
+			"Delegation %d should have delegator %s",
+			i,
+			expectedDel.Sender.Address,
+		)
+		assert.Equal(
+			t,
+			expectedDel.Amount,
+			allSaved[i].Amount,
+			"Delegation %d should have amount %d",
+			i,
+			expectedDel.Amount,
+		)
+		assert.Equal(
+			t,
+			expectedDel.Level,
+			allSaved[i].Level,
+			"Delegation %d should have level %d",
+			i,
+			expectedDel.Level,
+		)
 	}
 }
 
@@ -417,7 +441,12 @@ func runBackfillExpectingError(t *testing.T, svc *scraper.Service) <-chan error 
 	return errorCh
 }
 
-func runPollingCycles(t *testing.T, svc *scraper.Service, clock *fakeClock, cycleCount int) []scraper.PollingSyncCompleted {
+func runPollingCycles(
+	t *testing.T,
+	svc *scraper.Service,
+	clock *fakeClock,
+	cycleCount int,
+) []scraper.PollingSyncCompleted {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 
@@ -692,7 +721,13 @@ func assertBackfillSyncCompletedEvents(t *testing.T, events []scraper.BackfillSy
 
 func assertBackfillDoneEvent(t *testing.T, event scraper.BackfillDone, expectedTotalProcessed int64) {
 	t.Helper()
-	assert.Equal(t, expectedTotalProcessed, event.TotalProcessed, "Backfill should process %d delegations", expectedTotalProcessed)
+	assert.Equal(
+		t,
+		expectedTotalProcessed,
+		event.TotalProcessed,
+		"Backfill should process %d delegations",
+		expectedTotalProcessed,
+	)
 	assert.True(t, event.Duration > 0, "Backfill duration should be positive")
 }
 

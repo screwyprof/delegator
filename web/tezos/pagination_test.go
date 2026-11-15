@@ -328,15 +328,87 @@ func TestNewDelegationsPage(t *testing.T) {
 		wantPrevious bool
 		wantFirst    bool
 	}{
-		{name: "first page with more rows", criteria: tezos.DelegationsCriteria{Page: 1}, delegations: rows, overflowed: true, wantNext: true, wantPrevious: false, wantFirst: false},
-		{name: "first page that fits", criteria: tezos.DelegationsCriteria{Page: 1}, delegations: rows, overflowed: false, wantNext: false, wantPrevious: false, wantFirst: false},
-		{name: "later page number", criteria: tezos.DelegationsCriteria{Page: 3}, delegations: rows, overflowed: false, wantNext: false, wantPrevious: true, wantFirst: true},
-		{name: "after a cursor with more rows", criteria: tezos.DelegationsCriteria{After: cursor}, delegations: rows, overflowed: true, wantNext: true, wantPrevious: true, wantFirst: true},
-		{name: "after a cursor, last page", criteria: tezos.DelegationsCriteria{After: cursor}, delegations: rows, overflowed: false, wantNext: false, wantPrevious: true, wantFirst: true},
-		{name: "before a cursor with newer rows beyond", criteria: tezos.DelegationsCriteria{Before: cursor}, delegations: rows, overflowed: true, wantNext: true, wantPrevious: true, wantFirst: true},
-		{name: "before a cursor, reaching the newest", criteria: tezos.DelegationsCriteria{Before: cursor}, delegations: rows, overflowed: false, wantNext: true, wantPrevious: false, wantFirst: true},
-		{name: "empty page past the end keeps only first", criteria: tezos.DelegationsCriteria{Page: 999}, delegations: nil, overflowed: false, wantNext: false, wantPrevious: false, wantFirst: true},
-		{name: "empty cursor page keeps only first", criteria: tezos.DelegationsCriteria{After: cursor}, delegations: nil, overflowed: false, wantNext: false, wantPrevious: false, wantFirst: true},
+		{
+			name:         "first page with more rows",
+			criteria:     tezos.DelegationsCriteria{Page: 1},
+			delegations:  rows,
+			overflowed:   true,
+			wantNext:     true,
+			wantPrevious: false,
+			wantFirst:    false,
+		},
+		{
+			name:         "first page that fits",
+			criteria:     tezos.DelegationsCriteria{Page: 1},
+			delegations:  rows,
+			overflowed:   false,
+			wantNext:     false,
+			wantPrevious: false,
+			wantFirst:    false,
+		},
+		{
+			name:         "later page number",
+			criteria:     tezos.DelegationsCriteria{Page: 3},
+			delegations:  rows,
+			overflowed:   false,
+			wantNext:     false,
+			wantPrevious: true,
+			wantFirst:    true,
+		},
+		{
+			name:         "after a cursor with more rows",
+			criteria:     tezos.DelegationsCriteria{After: cursor},
+			delegations:  rows,
+			overflowed:   true,
+			wantNext:     true,
+			wantPrevious: true,
+			wantFirst:    true,
+		},
+		{
+			name:         "after a cursor, last page",
+			criteria:     tezos.DelegationsCriteria{After: cursor},
+			delegations:  rows,
+			overflowed:   false,
+			wantNext:     false,
+			wantPrevious: true,
+			wantFirst:    true,
+		},
+		{
+			name:         "before a cursor with newer rows beyond",
+			criteria:     tezos.DelegationsCriteria{Before: cursor},
+			delegations:  rows,
+			overflowed:   true,
+			wantNext:     true,
+			wantPrevious: true,
+			wantFirst:    true,
+		},
+		{
+			name:         "before a cursor, reaching the newest",
+			criteria:     tezos.DelegationsCriteria{Before: cursor},
+			delegations:  rows,
+			overflowed:   false,
+			wantNext:     true,
+			wantPrevious: false,
+			wantFirst:    true,
+		},
+		{
+			name:         "empty page past the end keeps only first",
+			criteria:     tezos.DelegationsCriteria{Page: 999},
+			delegations:  nil,
+			overflowed:   false,
+			wantNext:     false,
+			wantPrevious: false,
+			wantFirst:    true,
+		},
+		{
+			name:         "empty cursor page keeps only first",
+			criteria:     tezos.DelegationsCriteria{After: cursor},
+			delegations:  nil,
+			overflowed:   false,
+			wantNext:     false,
+			wantPrevious: false,
+			wantFirst:    true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -360,7 +432,11 @@ func TestDelegationsPage_Cursors(t *testing.T) {
 	// Arrange
 	newest := tezos.Delegation{ID: 9, Timestamp: time.Date(2025, 1, 15, 10, 0, 9, 0, time.UTC)}
 	oldest := tezos.Delegation{ID: 7, Timestamp: time.Date(2025, 1, 15, 10, 0, 5, 0, time.UTC)}
-	page := tezos.NewDelegationsPage(tezos.DelegationsCriteria{Page: 1}, []tezos.Delegation{newest, {ID: 8}, oldest}, true)
+	page := tezos.NewDelegationsPage(
+		tezos.DelegationsCriteria{Page: 1},
+		[]tezos.Delegation{newest, {ID: 8}, oldest},
+		true,
+	)
 
 	// Act & Assert
 	assert.Equal(t, tezos.CursorOf(oldest), page.NextCursor(), "Next page continues after the oldest row shown")

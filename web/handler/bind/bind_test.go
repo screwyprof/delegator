@@ -27,7 +27,13 @@ func TestCursorToken(t *testing.T) {
 			// Assert
 			require.NoError(t, err, "year %d", year)
 			require.NotNil(t, decoded)
-			assert.True(t, cursor.Timestamp.Equal(decoded.Timestamp), "timestamp %s != %s", cursor.Timestamp, decoded.Timestamp)
+			assert.True(
+				t,
+				cursor.Timestamp.Equal(decoded.Timestamp),
+				"timestamp %s != %s",
+				cursor.Timestamp,
+				decoded.Timestamp,
+			)
 			assert.Equal(t, cursor.ID, decoded.ID)
 		}
 	})

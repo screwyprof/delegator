@@ -60,7 +60,12 @@ type seededMigrator struct {
 	seedTimeout    time.Duration
 }
 
-func newSeededMigrator(migrationsDir string, demoCheckpoint int64, cfg config.Config, seedTimeout time.Duration) *seededMigrator {
+func newSeededMigrator(
+	migrationsDir string,
+	demoCheckpoint int64,
+	cfg config.Config,
+	seedTimeout time.Duration,
+) *seededMigrator {
 	return &seededMigrator{
 		migrationsDir:  migrationsDir,
 		demoCheckpoint: demoCheckpoint,
@@ -75,7 +80,13 @@ func (m *seededMigrator) Hash() (string, error) {
 		return "", err
 	}
 
-	return "seeded_demo_" + baseHash + "_" + strconv.FormatInt(m.demoCheckpoint, 10) + "_" + strconv.FormatUint(m.cfg.ChunkSize, 10), nil
+	return "seeded_demo_" + baseHash + "_" + strconv.FormatInt(
+		m.demoCheckpoint,
+		10,
+	) + "_" + strconv.FormatUint(
+		m.cfg.ChunkSize,
+		10,
+	), nil
 }
 
 func (m *seededMigrator) Migrate(ctx context.Context, db *sql.DB, conf pgtestdb.Config) error {

@@ -70,7 +70,13 @@ func (h *TezosGetDelegations) GetDelegations(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Create domain criteria with validation
-	criteria, err := tezos.NewDelegationsCriteria(req.Year, req.Page, req.PerPage, tezos.After(after), tezos.Before(before))
+	criteria, err := tezos.NewDelegationsCriteria(
+		req.Year,
+		req.Page,
+		req.PerPage,
+		tezos.After(after),
+		tezos.Before(before),
+	)
 	if err != nil {
 		return httpkit.JsonError(api.BadRequest(err))
 	}
@@ -105,11 +111,23 @@ func buildPaginationLinks(page *tezos.DelegationsPage, baseURL *url.URL, year ui
 	}
 
 	if page.HasPrevious() {
-		links = append(links, fmt.Sprintf(`<%s>; rel="prev"`, pageLink(baseURL, page.Size, "before", bind.EncodeCursor(page.PreviousCursor(), year))))
+		links = append(
+			links,
+			fmt.Sprintf(
+				`<%s>; rel="prev"`,
+				pageLink(baseURL, page.Size, "before", bind.EncodeCursor(page.PreviousCursor(), year)),
+			),
+		)
 	}
 
 	if page.HasNext() {
-		links = append(links, fmt.Sprintf(`<%s>; rel="next"`, pageLink(baseURL, page.Size, "after", bind.EncodeCursor(page.NextCursor(), year))))
+		links = append(
+			links,
+			fmt.Sprintf(
+				`<%s>; rel="next"`,
+				pageLink(baseURL, page.Size, "after", bind.EncodeCursor(page.NextCursor(), year)),
+			),
+		)
 	}
 
 	return strings.Join(links, ", ")

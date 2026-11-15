@@ -156,7 +156,11 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 				publicURL, err := url.Parse(publicBase)
 				require.NoError(t, err)
 
-				server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString, handler.WithPublicURL(publicURL))
+				server, cleanup := createTestServerUsingSeededDatabase(
+					t,
+					dbConnString,
+					handler.WithPublicURL(publicURL),
+				)
 				client := createTestAPIClient(t)
 
 				// Act
@@ -182,7 +186,12 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			defer cleanup()
 			client := createTestAPIClient(t)
 
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations?per_page=10", nil)
+			req, err := http.NewRequestWithContext(
+				t.Context(),
+				http.MethodGet,
+				server.URL+"/xtz/delegations?per_page=10",
+				nil,
+			)
 			require.NoError(t, err, "Should create HTTP request")
 			req.Header.Set("X-Forwarded-Proto", "https")
 			req.Header.Set("X-Forwarded-Host", "evil.example")
@@ -229,15 +238,24 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			forged := base64.RawURLEncoding.EncodeToString([]byte("v1:0:-9223372036854775808:1"))
 
 			// Act
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/xtz/delegations?after="+forged, nil)
+			req, err := http.NewRequestWithContext(
+				t.Context(),
+				http.MethodGet,
+				server.URL+"/xtz/delegations?after="+forged,
+				nil,
+			)
 			require.NoError(t, err, "Should create HTTP request")
 			response, err := client.Do(req)
 			require.NoError(t, err, "HTTP request should succeed")
 			defer func() { _ = response.Body.Close() }()
 
 			// Assert
-			assert.Equal(t, http.StatusBadRequest, response.StatusCode,
-				"A forged cursor outside any representable timestamp must be rejected, not silently page a wrapped-around position")
+			assert.Equal(
+				t,
+				http.StatusBadRequest,
+				response.StatusCode,
+				"A forged cursor outside any representable timestamp must be rejected, not silently page a wrapped-around position",
+			)
 		})
 
 		t.Run("it rejects a cursor replayed under a different year filter", func(t *testing.T) {
@@ -314,26 +332,33 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 				"Delegations sharing a timestamp should come back in a stable id-descending order")
 		})
 
-		t.Run("it returns every delegation exactly once when following next links while new ones arrive", func(t *testing.T) {
-			t.Parallel()
+		t.Run(
+			"it returns every delegation exactly once when following next links while new ones arrive",
+			func(t *testing.T) {
+				t.Parallel()
 
-			// Arrange
-			const perPage = 2
+				// Arrange
+				const perPage = 2
 
-			server, db, cleanup := createTestServerWithCleanDatabase(t)
-			defer cleanup()
-			insertDelegationsWithTiedTimestamps(t, db)
-			client := createTestAPIClient(t)
+				server, db, cleanup := createTestServerWithCleanDatabase(t)
+				defer cleanup()
+				insertDelegationsWithTiedTimestamps(t, db)
+				client := createTestAPIClient(t)
 
-			// Act
-			seen := walkNextLinks(t, client, makeGetDelegationsURL(server.URL, perPage), func() {
-				insertNewerDelegation(t, db) // the scraper lands a new delegation mid-walk
-			})
+				// Act
+				seen := walkNextLinks(t, client, makeGetDelegationsURL(server.URL, perPage), func() {
+					insertNewerDelegation(t, db) // the scraper lands a new delegation mid-walk
+				})
 
-			// Assert
-			assert.Equal(t, tiedDelegationsNewestFirst, seen,
-				"Following next links should return each pre-existing delegation once, in order, with no gaps or repeats")
-		})
+				// Assert
+				assert.Equal(
+					t,
+					tiedDelegationsNewestFirst,
+					seen,
+					"Following next links should return each pre-existing delegation once, in order, with no gaps or repeats",
+				)
+			},
+		)
 
 		t.Run("it preserves query parameters in pagination links", func(t *testing.T) {
 			t.Parallel()
@@ -372,7 +397,11 @@ func createTestAPIClient(t *testing.T) *http.Client {
 }
 
 // createTestServerUsingSeededDatabase creates a test server that connects to an already-seeded database
-func createTestServerUsingSeededDatabase(t *testing.T, dbConnString string, opts ...handler.Option) (*httptest.Server, func()) {
+func createTestServerUsingSeededDatabase(
+	t *testing.T,
+	dbConnString string,
+	opts ...handler.Option,
+) (*httptest.Server, func()) {
 	t.Helper()
 	return createTestServerWithIsolatedConnection(t, dbConnString, opts...)
 }
@@ -426,7 +455,12 @@ func makeGetDelegationsWithYearRequest(t *testing.T, client *http.Client, baseUR
 }
 
 // makeGetDelegationsWithPagination performs GET /xtz/delegations with pagination
-func makeGetDelegationsWithPagination(t *testing.T, client *http.Client, baseURL string, page, perPage int) *http.Response {
+func makeGetDelegationsWithPagination(
+	t *testing.T,
+	client *http.Client,
+	baseURL string,
+	page, perPage int,
+) *http.Response {
 	t.Helper()
 
 	url := fmt.Sprintf("%s/xtz/delegations?page=%d&per_page=%d", baseURL, page, perPage)
@@ -440,7 +474,12 @@ func makeGetDelegationsWithPagination(t *testing.T, client *http.Client, baseURL
 }
 
 // makeGetDelegationsWithYearAndPagination performs GET /xtz/delegations with year filter and pagination
-func makeGetDelegationsWithYearAndPagination(t *testing.T, client *http.Client, baseURL string, year, page, perPage int) *http.Response {
+func makeGetDelegationsWithYearAndPagination(
+	t *testing.T,
+	client *http.Client,
+	baseURL string,
+	year, page, perPage int,
+) *http.Response {
 	t.Helper()
 
 	url := fmt.Sprintf("%s/xtz/delegations?year=%d&page=%d&per_page=%d", baseURL, year, page, perPage)
@@ -466,7 +505,13 @@ func assertSuccessfulResponse(t *testing.T, resp *http.Response) {
 // assertReturnsDefaultPagination verifies response uses default pagination (50 items)
 func assertReturnsDefaultPagination(t *testing.T, response api.DelegationsResponse) {
 	t.Helper()
-	assert.Equal(t, tezos.DefaultPerPage, len(response.Data), "Should return exactly %d delegations (default pagination limit)", tezos.DefaultPerPage)
+	assert.Equal(
+		t,
+		tezos.DefaultPerPage,
+		len(response.Data),
+		"Should return exactly %d delegations (default pagination limit)",
+		tezos.DefaultPerPage,
+	)
 }
 
 // assertReturnsNonEmptyResults verifies response contains at least one delegation
@@ -778,7 +823,11 @@ func delegatorIDs(t *testing.T, delegations []api.Delegation) []int {
 
 // createTestServerWithIsolatedConnection creates a test server with its own connection pool
 // to the provided database. Each test gets isolated connection resources but shares the read-only database.
-func createTestServerWithIsolatedConnection(t *testing.T, dbConnString string, opts ...handler.Option) (*httptest.Server, func()) {
+func createTestServerWithIsolatedConnection(
+	t *testing.T,
+	dbConnString string,
+	opts ...handler.Option,
+) (*httptest.Server, func()) {
 	t.Helper()
 
 	// Each test gets its own connection pool to the shared read-only database
