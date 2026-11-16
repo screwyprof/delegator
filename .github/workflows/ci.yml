@@ -72,8 +72,17 @@ jobs:
 
       # `make` formats code and tidies modules in place; on a clean commit that changes nothing.
       # Anything it did change was committed unformatted or untidy.
+      #
+      # go.work.sum is excepted: Renovate tidies each module but doesn't run `go work sync`, so its
+      # branches can leave that file behind. It only caches extra checksums -- go verifies every
+      # module against the checksum database regardless -- and the next local `make` refreshes it.
       - name: Check make left the tree clean
-        run: git diff --exit-code
+        run: git diff --exit-code -- . ':(exclude)go.work.sum'
+
+      # The images the demo and production run. Without this a Dockerfile change, or a Renovate
+      # bump of a base image or the Dockerfile syntax, would merge on a green run that never built it.
+      - name: Build the service images
+        run: docker compose build migrator scraper web
 
       - name: Coverage
         shell: bash

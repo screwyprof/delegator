@@ -35,6 +35,8 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
 
 Acceptance tests connect via `TEST_DATABASE_URL` (default: `localhost:5432`, matching a host-run `docker compose up -d postgres`). Inside the devcontainer this is pre-wired to the `postgres` service name instead — see [DEVELOPMENT.md §6.3](DEVELOPMENT.md#63-running-acceptance-tests-localhost-vs-devcontainer) for details.
 
+**CI and dependency updates.** GitHub Actions runs `make`, the coverage report and a build of the service images on every push and on pull requests (forks run with a read-only token and no secrets). [Renovate](renovate.json) proposes dependency updates weekly and automerges them once CI is green, after a 3-day wait for new releases; major versions, `flake.lock`, devcontainer and security updates open a PR for review instead, and the Go toolchain is upgraded by hand because it is pinned in several places that must agree.
+
 ## 📝 Log Samples
 A sneak peek at the logs tail:  `docker compose logs -f <service>`:
 ### Scraper

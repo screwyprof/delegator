@@ -1,0 +1,96 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommitTypeAll(chore)",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/London",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+
+  "description": [
+    "Updates that CI actually exercises are automerged once it is green; the rest open a PR for a human. CI runs `make` (fmt, lint, every test including acceptance against Postgres and the live TzKT API, build) on every push.",
+    "Automerge goes through branches, not PRs: Renovate pushes a branch, CI's push trigger tests it, and Renovate fast-forwards main only if every check passed. ignoreTests stays false, so a branch with no green checks is never merged."
+  ],
+
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+
+  "automerge": true,
+  "automergeType": "branch",
+  "ignoreTests": false,
+
+  "postUpdateOptions": ["gomodTidy"],
+
+  "packageRules": [
+    {
+      "description": "One update for the whole workspace: the five go.mod files share dependencies (pgx in all of them), which must move together, and x/ modules tag together.",
+      "matchManagers": ["gomod"],
+      "groupName": "go modules"
+    },
+    {
+      "description": "The Makefile's tool pins. make runs these tools, so a green CI has actually used the bumped version.",
+      "matchManagers": ["custom.regex"],
+      "groupName": "go tools"
+    },
+    {
+      "description": "GitHub Actions, pinned to commit SHAs with the release in a comment. The bumped action runs in the very CI run that judges it, so the 3-day minimumReleaseAge is what guards against a compromised release here.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "A major is a changelog to read, not a number to bump.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major"]
+    },
+    {
+      "description": "flake.lock is never automerged: CI doesn't use nix, so a green run says nothing about whether the devShell still builds or still names go_1_27.",
+      "matchManagers": ["nix"],
+      "automerge": false
+    },
+    {
+      "description": "The workspace's own modules are replace'd to local directories, so their require versions are placeholders; bumping them to the latest commit's pseudo-version would be churn with no effect.",
+      "matchPackageNames": ["github.com/screwyprof/delegator", "github.com/screwyprof/delegator/**"],
+      "enabled": false
+    },
+    {
+      "description": "The devcontainer isn't built in CI, so a green run says nothing about it: its feature and image updates get a PR.",
+      "matchManagers": ["devcontainer"],
+      "automerge": false
+    },
+    {
+      "description": "The Go toolchain moves by hand. It is pinned to the exact patch in go.work, every go.mod, the Dockerfiles' golang image, the CI workflow's go-version and the flake's go_1_27, and they must agree; Renovate can't move them together. 1.27.0/1.27.1 miscounted coverage (golang/go#80974), which is why the patch is deliberate.",
+      "matchDepNames": ["go", "golang"],
+      "enabled": false
+    }
+  ],
+
+  "customManagers": [
+    {
+      "description": "The Makefile's *_VERSION pins: tools run with `go run pkg@version`, so their versions live beside the command rather than in go.mod.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>[a-z-]+?)\\s+depName=(?<depName>[^\\s]+?)\\s*\\n\\s*[A-Z_]+_VERSION\\s*:?=\\s*(?<currentValue>\\S+)"
+      ]
+    }
+  ],
+
+  "nix": {
+    "enabled": true
+  },
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": false,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+
+  "vulnerabilityAlerts": {
+    "description": "A security fix opens at once rather than on Monday, but waits for a human: vulnerabilityAlerts drops minimumReleaseAge to zero, so automerging it would merge a brand-new release, the kind an attacker would publish, with no delay at all.",
+    "schedule": ["at any time"],
+    "automerge": false
+  }
+}
