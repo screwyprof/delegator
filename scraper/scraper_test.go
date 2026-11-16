@@ -99,6 +99,56 @@ func TestServiceBackfillBehavior(t *testing.T) {
 	})
 }
 
+// A failed backfill request is reported and retried from the checkpoint after one poll interval,
+// rather than ending ingestion: one TzKT 5xx or timeout must not stop the service for good.
+func TestServiceBackfillRetries(t *testing.T) {
+	t.Parallel()
+
+	// Arrange: the first request fails, then the API serves one delegation and the end of data
+	server := apiFailingOnceThen(pollWithDelegation(1), endOfBackfill())
+	defer server.Close()
+
+	savedBatchesCh, store := storeCapturingBatches()
+	clock, svc := clockControlledPolling(server, store)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	events, done := svc.Start(ctx)
+	failed := make(chan struct{}, 1)
+	finished := make(chan scraper.BackfillDone, 1)
+
+	subCloser := scraper.NewSubscriber(events,
+		scraper.OnBackfillError(func(scraper.BackfillError) { failed <- struct{}{} }),
+		scraper.OnBackfillDone(func(e scraper.BackfillDone) { finished <- e }),
+	)
+
+	t.Cleanup(func() {
+		cancel()
+		<-done
+		subCloser()
+	})
+
+	// Act: wait for the failure, then let the retry interval elapse
+	select {
+	case <-failed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected the first backfill request to fail")
+	}
+
+	clock.tick <- time.Now()
+
+	// Assert
+	select {
+	case done := <-finished:
+		assert.Equal(t, int64(1), done.TotalProcessed, "the retried backfill should store the delegation")
+	case <-time.After(2 * time.Second):
+		t.Fatal("backfill was not retried after a failed request")
+	}
+
+	assert.Len(t, savedBatchesCh, 1, "exactly one batch should have been saved")
+}
+
 // TestServicePollingBehavior tests core polling business logic.
 func TestServicePollingBehavior(t *testing.T) {
 	t.Parallel()
@@ -529,10 +579,33 @@ func runPollingExpectingError(t *testing.T, svc *scraper.Service, clock *fakeClo
 	return errorCh
 }
 
+// apiFailingOnceThen answers the first request with a 500, then serves responses in order.
+func apiFailingOnceThen(responses ...string) *httptest.Server {
+	failed := false
+	next := sequencedResponses(responses)
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !failed {
+			failed = true
+
+			w.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+
+		next(w, r)
+	}))
+}
+
 func createTestServer(responses []string) *httptest.Server {
+	return httptest.NewServer(sequencedResponses(responses))
+}
+
+// sequencedResponses serves responses in order, then empty pages.
+func sequencedResponses(responses []string) http.HandlerFunc {
 	callCount := 0
 
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		if callCount < len(responses) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(responses[callCount]))
@@ -540,7 +613,7 @@ func createTestServer(responses []string) *httptest.Server {
 		} else {
 			_, _ = w.Write([]byte(emptyResponse())) // Default to empty for extra calls
 		}
-	}))
+	}
 }
 
 func createErrorServer() *httptest.Server {

@@ -73,7 +73,8 @@ type BackfillSyncCompleted struct {
 	ChunkSize    uint64
 }
 
-// BackfillError reports the backfill stopped on an error; the service does not start polling.
+// BackfillError reports a failed backfill step; it is retried from the checkpoint after one poll
+// interval, and polling starts only once the backfill has caught up.
 type BackfillError struct {
 	Err error
 }

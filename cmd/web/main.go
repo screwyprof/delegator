@@ -32,14 +32,26 @@ var (
 // HTTP server timeouts. ReadHeaderTimeout is the one that matters most: without it a client can
 // hold a connection open indefinitely by trickling request headers (Slowloris).
 const (
-	readHeaderTimeout = 5 * time.Second
-	readTimeout       = 10 * time.Second
-	writeTimeout      = 30 * time.Second
-	idleTimeout       = 120 * time.Second
-	shutdownTimeout   = 30 * time.Second // grace period for in-flight requests
+	readHeaderTimeout  = 5 * time.Second
+	readTimeout        = 10 * time.Second
+	writeTimeout       = 30 * time.Second
+	idleTimeout        = 120 * time.Second
+	shutdownTimeout    = 30 * time.Second // grace period for in-flight requests
+	healthcheckTimeout = 3 * time.Second  // whole `web healthcheck` probe
 )
 
 func main() {
+	// `web healthcheck` probes a running instance and exits; the image is scratch, so a container
+	// healthcheck has no curl to call /healthz with.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		if err := healthcheck(); err != nil {
+			fmt.Fprintln(os.Stderr, "unhealthy:", err)
+			os.Exit(1)
+		}
+
+		return
+	}
+
 	// os.Exit only here, after run has returned: an os.Exit inside run would skip its defers
 	// (closing the pool, stopping signal delivery).
 	if err := run(); err != nil {
@@ -47,6 +59,39 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// healthcheck probes the instance listening on this container's configured port.
+func healthcheck() error {
+	cfg := config.New()
+
+	ctx, cancel := context.WithTimeout(context.Background(), healthcheckTimeout)
+	defer cancel()
+
+	return checkHealth(ctx, "http://"+net.JoinHostPort("127.0.0.1", cfg.HTTPPort))
+}
+
+// checkHealth reports an error unless GET baseURL/healthz answers 200.
+func checkHealth(ctx context.Context, baseURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/healthz", nil)
+	if err != nil {
+		return fmt.Errorf("building health request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("calling /healthz: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: /healthz answered %d", ErrUnhealthy, resp.StatusCode)
+	}
+
+	return nil
+}
+
+// ErrUnhealthy means /healthz answered, but not with 200.
+var ErrUnhealthy = errors.New("service unhealthy")
 
 func run() error {
 	cfg := config.New()
@@ -76,6 +121,7 @@ func run() error {
 
 	mux := http.NewServeMux()
 	handler.NewTezosGetDelegations(store, handler.WithPublicURL(&cfg.PublicURL)).AddRoutes(mux)
+	handler.NewHealth(db).AddRoutes(mux)
 
 	addr := net.JoinHostPort(cfg.HTTPHost, cfg.HTTPPort)
 	server := newServer(addr, logger.NewMiddleware(log)(mux))

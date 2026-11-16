@@ -78,8 +78,10 @@ func (s *Service) Start(ctx context.Context) (<-chan Event, <-chan struct{}) {
 	done := make(chan struct{})
 
 	go func() {
-		defer close(s.events)
+		// Deferred calls run in reverse: events closes first, so by the time done closes, every
+		// event has been sent and a subscriber can finish draining them.
 		defer close(done)
+		defer close(s.events)
 
 		s.run(ctx)
 	}()
@@ -88,7 +90,8 @@ func (s *Service) Start(ctx context.Context) (<-chan Event, <-chan struct{}) {
 }
 
 // run backfills up to the newest delegation, then polls for new ones until ctx is cancelled.
-// A failed backfill ends the run: polling only starts from a consistent checkpoint.
+// Neither phase gives up on an error: each is reported and retried after one poll interval,
+// resuming from the checkpoint, so the service only stops when ctx is cancelled.
 func (s *Service) run(ctx context.Context) {
 	if !s.backfill(ctx) {
 		return
@@ -98,15 +101,13 @@ func (s *Service) run(ctx context.Context) {
 }
 
 // backfill syncs batch after batch until one comes back empty, reporting progress as events.
-// It reports false if it stopped on an error.
+// A failed step is reported as a BackfillError and retried; it returns false only when ctx is
+// cancelled, which is a shutdown rather than an error and so is not reported as one.
 func (s *Service) backfill(ctx context.Context) bool {
 	start := s.clock.Now()
 
-	// Get starting checkpoint ID for observability
-	startingCheckpointID, err := s.store.LastProcessedID(ctx)
-	if err != nil {
-		s.events <- BackfillError{Err: fmt.Errorf("%w: %w", ErrCheckpointRetrieval, err)}
-
+	startingCheckpointID, ok := s.startingCheckpoint(ctx)
+	if !ok {
 		return false
 	}
 
@@ -120,9 +121,11 @@ func (s *Service) backfill(ctx context.Context) bool {
 	for {
 		result, err := s.syncBatch(ctx, s.chunkSize)
 		if err != nil {
-			s.events <- BackfillError{Err: err}
+			if !s.reportAndWait(ctx, BackfillError{Err: err}) {
+				return false
+			}
 
-			return false
+			continue
 		}
 
 		if result.Count == 0 {
@@ -146,6 +149,39 @@ func (s *Service) backfill(ctx context.Context) bool {
 	return true
 }
 
+// startingCheckpoint reads the checkpoint the backfill starts from, retrying failures like any
+// other backfill step. It reports false only when ctx is cancelled.
+func (s *Service) startingCheckpoint(ctx context.Context) (int64, bool) {
+	for {
+		id, err := s.store.LastProcessedID(ctx)
+		if err == nil {
+			return id, true
+		}
+
+		if !s.reportAndWait(ctx, BackfillError{Err: fmt.Errorf("%w: %w", ErrCheckpointRetrieval, err)}) {
+			return 0, false
+		}
+	}
+}
+
+// reportAndWait emits event for a failed step, then waits one poll interval before the caller
+// retries. It reports false, emitting nothing, if ctx is cancelled: an error caused by shutdown
+// is not a failure.
+func (s *Service) reportAndWait(ctx context.Context, event Event) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+
+	s.events <- event
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-s.clock.After(s.pollInterval):
+		return true
+	}
+}
+
 // poll syncs one batch per interval until ctx is cancelled. A failed cycle is reported and
 // retried on the next tick rather than ending the service.
 func (s *Service) poll(ctx context.Context) {
@@ -160,7 +196,10 @@ func (s *Service) poll(ctx context.Context) {
 		case <-s.clock.After(s.pollInterval):
 			result, err := s.syncBatch(ctx, s.chunkSize)
 			if err != nil {
-				s.events <- PollingError{Err: err}
+				// A cycle cut off by shutdown isn't a failure; the next loop sees ctx.Done.
+				if ctx.Err() == nil {
+					s.events <- PollingError{Err: err}
+				}
 
 				continue
 			}

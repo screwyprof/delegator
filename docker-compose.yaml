@@ -79,7 +79,9 @@ services:
     depends_on:
       migrator:
         condition: service_completed_successfully
-    #restart: unless-stopped
+    # The scraper retries every failure itself and exits non-zero only if it stops unexpectedly;
+    # restart covers that and a crash.
+    restart: unless-stopped
 
   web:
     build:
@@ -100,4 +102,11 @@ services:
     depends_on:
       scraper:
         condition: service_started
-    #restart: unless-stopped
+    # /healthz pings the database. The image is scratch (no curl), so the binary checks itself.
+    healthcheck:
+      test: ["CMD", "/web", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

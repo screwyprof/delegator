@@ -239,6 +239,33 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			assert.False(t, first.Query().Has("page"), "first link should not carry page")
 		})
 
+		t.Run("it rejects a page number whose offset overflows", func(t *testing.T) {
+			t.Parallel()
+
+			// Arrange
+			server, cleanup := createTestServerUsingSeededDatabase(t, dbConnString)
+			defer cleanup()
+
+			client := createTestAPIClient(t)
+
+			for name, rawQuery := range map[string]string{
+				"largest uint64 page (was a 500)":        "page=18446744073709551615",
+				"offset wrapping to 0 (was page 1, 200)": "page=288230376151711745&per_page=64",
+			} {
+				// Act
+				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+					server.URL+"/xtz/delegations?"+rawQuery, nil)
+				require.NoError(t, err, "Should create HTTP request")
+				response, err := client.Do(req)
+				require.NoError(t, err, "HTTP request should succeed")
+
+				_ = response.Body.Close()
+
+				// Assert
+				assert.Equal(t, http.StatusBadRequest, response.StatusCode, name)
+			}
+		})
+
 		t.Run("it rejects a cursor whose position is out of range", func(t *testing.T) {
 			t.Parallel()
 

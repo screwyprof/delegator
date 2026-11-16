@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 )
 
 // Sentinel errors for delegation criteria construction.
 var (
 	ErrInvalidYear    = errors.New("invalid year")
+	ErrInvalidPage    = errors.New("invalid page")
 	ErrInvalidPerPage = errors.New("invalid per_page")
 
 	ErrConflictingPagination = errors.New("conflicting pagination parameters")
@@ -81,11 +83,17 @@ func NewDelegationsCriteria(year, page, perPage uint64, opts ...CriteriaOption) 
 		return DelegationsCriteria{}, fmt.Errorf("%w: %w", ErrInvalidYear, err)
 	}
 
-	p := ParsePageFromUint64(page) // No error - any uint64 is valid for page
+	p := ParsePageFromUint64(page) // 0 means the first page; the offset check below bounds the rest
 
 	pp, err := ParsePerPageFromUint64(perPage)
 	if err != nil {
 		return DelegationsCriteria{}, fmt.Errorf("%w: %w", ErrInvalidPerPage, err)
+	}
+
+	// The offset, (page-1)*per_page, must fit an int64: that's what Postgres takes for OFFSET,
+	// and in uint64 arithmetic it would wrap around and silently serve a different page.
+	if p.Uint64()-1 > math.MaxInt64/pp.Uint64() {
+		return DelegationsCriteria{}, fmt.Errorf("%w: page %d is too deep for per_page %d", ErrInvalidPage, p, pp)
 	}
 
 	criteria := DelegationsCriteria{

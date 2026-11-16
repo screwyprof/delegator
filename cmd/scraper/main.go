@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -77,13 +78,23 @@ func run() error {
 	events, done := scraperService.Start(ctx)
 
 	subCloser := setupEventLogging(ctx, events, log)
-	defer subCloser()
 
 	<-done
+	subCloser() // log every remaining event before the final line, so the log ends in order
+
+	// The service retries every failure and stops only when ctx is cancelled. If it ever stops
+	// otherwise, exit non-zero so a restart policy brings it back instead of reading success.
+	if ctx.Err() == nil {
+		return ErrStoppedUnexpectedly
+	}
+
 	log.InfoContext(ctx, "Scraper service stopped gracefully")
 
 	return nil
 }
+
+// ErrStoppedUnexpectedly means the scraper stopped without being asked to.
+var ErrStoppedUnexpectedly = errors.New("scraper service stopped without a shutdown request")
 
 // setupEventLogging configures event handlers using slog directly.
 func setupEventLogging(ctx context.Context, events <-chan scraper.Event, log *slog.Logger) func() {
@@ -108,7 +119,11 @@ func setupEventLogging(ctx context.Context, events <-chan scraper.Event, log *sl
 			)
 		}),
 		scraper.OnBackfillError(func(event scraper.BackfillError) {
-			log.ErrorContext(ctx, "Backfill failed", slog.Any("error", event.Err))
+			log.ErrorContext(
+				ctx,
+				"Backfill step failed, retrying after the poll interval",
+				slog.Any("error", event.Err),
+			)
 		}),
 		scraper.OnPollingStarted(func(event scraper.PollingStarted) {
 			log.InfoContext(ctx, "Polling started",
@@ -132,7 +147,7 @@ func setupEventLogging(ctx context.Context, events <-chan scraper.Event, log *sl
 			)
 		}),
 		scraper.OnPollingError(func(event scraper.PollingError) {
-			log.ErrorContext(ctx, "Polling failed", slog.Any("error", event.Err))
+			log.ErrorContext(ctx, "Polling cycle failed, retrying on the next one", slog.Any("error", event.Err))
 		}),
 	)
 }

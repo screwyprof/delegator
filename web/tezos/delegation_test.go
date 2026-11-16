@@ -1,6 +1,7 @@
 package tezos_test
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -379,5 +380,33 @@ func TestNewDelegationsCriteria_Cursors(t *testing.T) {
 
 		_, err = tezos.NewDelegationsCriteria(0, 2, 10, tezos.Before(cursor))
 		assert.ErrorIs(t, err, tezos.ErrConflictingPagination, "page with before")
+	})
+}
+
+// A page whose offset, (page-1)*per_page, doesn't fit an int64 is rejected: Postgres can't take
+// it, and in uint64 arithmetic it wraps around, silently serving a different page.
+func TestNewDelegationsCriteria_PageOverflow(t *testing.T) {
+	t.Parallel()
+
+	t.Run("it rejects pages whose offset overflows", func(t *testing.T) {
+		t.Parallel()
+
+		for name, tc := range map[string]struct{ page, perPage uint64 }{
+			"largest uint64 page":          {page: math.MaxUint64, perPage: 50},
+			"offset wraps to exactly zero": {page: 1<<58 + 1, perPage: 64},
+			"one past the int64 limit":     {page: math.MaxInt64/100 + 2, perPage: 100},
+		} {
+			_, err := tezos.NewDelegationsCriteria(0, tc.page, tc.perPage)
+			require.ErrorIs(t, err, tezos.ErrInvalidPage, name)
+		}
+	})
+
+	t.Run("it accepts the deepest page whose offset fits", func(t *testing.T) {
+		t.Parallel()
+
+		criteria, err := tezos.NewDelegationsCriteria(0, math.MaxInt64/100+1, 100)
+
+		require.NoError(t, err)
+		assert.LessOrEqual(t, criteria.ItemsToSkip(), uint64(math.MaxInt64))
 	})
 }

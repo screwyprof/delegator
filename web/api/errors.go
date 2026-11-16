@@ -76,6 +76,16 @@ func InternalServerError(cause error) *Error {
 	}
 }
 
+// ServiceUnavailable is a 503 for a dependency that doesn't answer; like a 500, the cause is kept
+// for logs and never sent.
+func ServiceUnavailable(cause error) *Error {
+	return &Error{
+		cause:    cause,
+		message:  http.StatusText(http.StatusServiceUnavailable),
+		httpCode: http.StatusServiceUnavailable,
+	}
+}
+
 // Wrap transforms any error into a safe API error
 // If the error is already an API error, it returns it unchanged.
 func Wrap(err error) *Error {
