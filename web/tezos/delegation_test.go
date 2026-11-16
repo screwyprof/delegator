@@ -383,30 +383,35 @@ func TestNewDelegationsCriteria_Cursors(t *testing.T) {
 	})
 }
 
-// A page whose offset, (page-1)*per_page, doesn't fit an int64 is rejected: Postgres can't take
-// it, and in uint64 arithmetic it wraps around, silently serving a different page.
-func TestNewDelegationsCriteria_PageOverflow(t *testing.T) {
+// Page numbers are served only up to MaxPageOffset skipped rows. OFFSET costs grow with depth
+// (~0.17ms per thousand rows on the full history), and past the cap a client follows cursor
+// links instead, which cost the same at any depth. The cap also keeps (page-1)*per_page far from
+// overflowing, which in uint64 arithmetic would wrap around and serve a different page.
+func TestNewDelegationsCriteria_PageDepth(t *testing.T) {
 	t.Parallel()
 
-	t.Run("it rejects pages whose offset overflows", func(t *testing.T) {
+	t.Run("it rejects pages deeper than the cap", func(t *testing.T) {
 		t.Parallel()
 
 		for name, tc := range map[string]struct{ page, perPage uint64 }{
+			"one page past the cap":        {page: tezos.MaxPageOffset/100 + 2, perPage: 100},
+			"past the cap at default size": {page: tezos.MaxPageOffset/50 + 2, perPage: 50},
 			"largest uint64 page":          {page: math.MaxUint64, perPage: 50},
 			"offset wraps to exactly zero": {page: 1<<58 + 1, perPage: 64},
-			"one past the int64 limit":     {page: math.MaxInt64/100 + 2, perPage: 100},
 		} {
 			_, err := tezos.NewDelegationsCriteria(0, tc.page, tc.perPage)
 			require.ErrorIs(t, err, tezos.ErrInvalidPage, name)
 		}
 	})
 
-	t.Run("it accepts the deepest page whose offset fits", func(t *testing.T) {
+	t.Run("it accepts the deepest page within the cap", func(t *testing.T) {
 		t.Parallel()
 
-		criteria, err := tezos.NewDelegationsCriteria(0, math.MaxInt64/100+1, 100)
+		for _, perPage := range []uint64{1, 50, 100} {
+			criteria, err := tezos.NewDelegationsCriteria(0, tezos.MaxPageOffset/perPage+1, perPage)
 
-		require.NoError(t, err)
-		assert.LessOrEqual(t, criteria.ItemsToSkip(), uint64(math.MaxInt64))
+			require.NoError(t, err, "per_page %d", perPage)
+			assert.LessOrEqual(t, criteria.ItemsToSkip(), uint64(tezos.MaxPageOffset))
+		}
 	})
 }

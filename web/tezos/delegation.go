@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 )
 
@@ -90,10 +89,13 @@ func NewDelegationsCriteria(year, page, perPage uint64, opts ...CriteriaOption) 
 		return DelegationsCriteria{}, fmt.Errorf("%w: %w", ErrInvalidPerPage, err)
 	}
 
-	// The offset, (page-1)*per_page, must fit an int64: that's what Postgres takes for OFFSET,
-	// and in uint64 arithmetic it would wrap around and silently serve a different page.
-	if p.Uint64()-1 > math.MaxInt64/pp.Uint64() {
-		return DelegationsCriteria{}, fmt.Errorf("%w: page %d is too deep for per_page %d", ErrInvalidPage, p, pp)
+	// Serve page numbers only up to MaxPageOffset skipped rows: OFFSET cost grows with depth, and
+	// cursor links reach any depth at the same cost. Dividing rather than multiplying keeps the
+	// check itself from overflowing, which in uint64 would wrap around to a different page.
+	if p.Uint64()-1 > MaxPageOffset/pp.Uint64() {
+		return DelegationsCriteria{}, fmt.Errorf(
+			"%w: page %d skips more than %d delegations at per_page %d; follow the rel=\"next\" links to go deeper",
+			ErrInvalidPage, p, MaxPageOffset, pp)
 	}
 
 	criteria := DelegationsCriteria{

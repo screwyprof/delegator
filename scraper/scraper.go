@@ -15,7 +15,6 @@ var (
 	ErrCheckpointRetrieval = errors.New("checkpoint retrieval failed")
 	ErrAPIRequestFailed    = errors.New("API request failed")
 	ErrSaveBatchFailed     = errors.New("save batch failed")
-	ErrInvalidTimestamp    = errors.New("invalid delegation timestamp")
 )
 
 // Default configuration values.

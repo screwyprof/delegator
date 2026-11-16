@@ -128,9 +128,7 @@ func (m *seededMigrator) seedDemoData(ctx context.Context, dbURL string) error {
 
 // backfill runs the scraper over pool until its backfill finishes, then stops it via cancel.
 func (m *seededMigrator) backfill(ctx context.Context, cancel context.CancelFunc, pool *pgxpool.Pool) error {
-	store, storeCloser := pgxstore.New(pool)
-	defer storeCloser()
-
+	store := pgxstore.New(pool)
 	httpClient := &http.Client{Timeout: m.cfg.HTTPClientTimeout}
 	client := tzkt.NewClient(httpClient, m.cfg.TzktAPIURL)
 

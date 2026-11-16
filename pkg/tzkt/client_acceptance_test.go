@@ -26,10 +26,10 @@ func TestTzktClientRealAPI(t *testing.T) {
 		Timeout: testCfg.HTTPTimeout,
 	}, testCfg.BaseURL)
 
-	// Act - Call the real Tzkt API with offset for more stable data
+	// Act - Call the real Tzkt API from a fixed, old id, so the data is the same every run
 	delegations, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
-		Limit:  testCfg.Limit,
-		Offset: testCfg.Offset,
+		Limit:         testCfg.Limit,
+		IDGreaterThan: &testCfg.AfterID,
 	})
 
 	// Assert - Verify we get valid delegation data structure

@@ -29,15 +29,9 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
-// New creates a new PostgreSQL store with an existing connection pool
-// Returns the store and a closer function.
-func New(pool *pgxpool.Pool) (*Store, func()) {
-	store := &Store{pool: pool}
-	closer := func() {
-		pool.Close()
-	}
-
-	return store, closer
+// New creates a PostgreSQL store over pool. The caller owns pool and closes it.
+func New(pool *pgxpool.Pool) *Store {
+	return &Store{pool: pool}
 }
 
 // LastProcessedID returns the last processed delegation ID (checkpoint).

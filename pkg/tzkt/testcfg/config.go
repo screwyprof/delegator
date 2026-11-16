@@ -9,8 +9,10 @@ import (
 
 // Config holds test-specific configuration for tzkt client acceptance tests.
 type Config struct {
-	Limit       uint64        `env:"TZKT_TEST_LIMIT"        envDefault:"5"`
-	Offset      uint64        `env:"TZKT_TEST_OFFSET"       envDefault:"100000"`
+	Limit uint64 `env:"TZKT_TEST_LIMIT" envDefault:"5"`
+	// AfterID anchors the live-API test on old delegations, which never change, so its data is
+	// stable from run to run.
+	AfterID     int64         `env:"TZKT_TEST_AFTER_ID"     envDefault:"1939557726552064"`
 	HTTPTimeout time.Duration `env:"TZKT_TEST_HTTP_TIMEOUT" envDefault:"30s"`
 	BaseURL     string        `env:"TZKT_TEST_BASE_URL"     envDefault:"https://api.tzkt.io"`
 }

@@ -116,9 +116,7 @@ func run() error {
 	}
 	defer db.Close()
 
-	store, storeCloser := pgxstore.New(db)
-	defer storeCloser()
-
+	store := pgxstore.New(db)
 	mux := http.NewServeMux()
 	handler.NewTezosGetDelegations(store, handler.WithPublicURL(&cfg.PublicURL)).AddRoutes(mux)
 	handler.NewHealth(db).AddRoutes(mux)

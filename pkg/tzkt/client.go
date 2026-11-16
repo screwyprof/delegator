@@ -49,12 +49,11 @@ func NewClient(httpClient *http.Client, baseURL string) *Client {
 	}
 }
 
-// DelegationsRequest represents parameters for getting delegations with filtering.
+// DelegationsRequest selects a batch of delegations. Paging is by id only (id.gt): the stable,
+// stateless keyset the scraper resumes from; offsets shift as new delegations arrive.
 type DelegationsRequest struct {
 	Limit         uint64
-	Offset        uint64     // offset pagination
-	IDGreaterThan *int64     // id.gt filter
-	TimestampGE   *time.Time // timestamp.ge filter
+	IDGreaterThan *int64 // id.gt filter
 }
 
 // Delegation represents a Tezos delegation from Tzkt API.
@@ -127,15 +126,6 @@ func (c *Client) buildDelegationsURL(req DelegationsRequest) string {
 	// Add filtering parameters
 	if req.IDGreaterThan != nil {
 		params.Set("id.gt", strconv.FormatInt(*req.IDGreaterThan, 10))
-	}
-
-	if req.TimestampGE != nil {
-		params.Set("timestamp.ge", req.TimestampGE.Format(time.RFC3339))
-	}
-
-	// Add offset pagination if specified
-	if req.Offset > 0 {
-		params.Set("offset", strconv.FormatUint(req.Offset, 10))
 	}
 
 	return fmt.Sprintf("%s%s?%s", c.baseURL, delegationsPath, params.Encode())

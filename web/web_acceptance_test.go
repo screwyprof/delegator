@@ -227,7 +227,12 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			client := createTestAPIClient(t)
 
 			// Act
-			response := makeGetDelegations(t, client, server.URL, delegationsQuery{Page: 999999, PerPage: 10})
+			response := makeGetDelegations(
+				t,
+				client,
+				server.URL,
+				delegationsQuery{Page: tezos.MaxPageOffset / 10, PerPage: 10},
+			)
 			delegationsResp := parseJSONResponse[api.DelegationsResponse](t, response)
 
 			// Assert
@@ -239,7 +244,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			assert.False(t, first.Query().Has("page"), "first link should not carry page")
 		})
 
-		t.Run("it rejects a page number whose offset overflows", func(t *testing.T) {
+		t.Run("it rejects page numbers past the depth cap, including overflowing ones", func(t *testing.T) {
 			t.Parallel()
 
 			// Arrange
@@ -251,6 +256,7 @@ func TestWebAPIAcceptanceBehavior(t *testing.T) {
 			for name, rawQuery := range map[string]string{
 				"largest uint64 page (was a 500)":        "page=18446744073709551615",
 				"offset wrapping to 0 (was page 1, 200)": "page=288230376151711745&per_page=64",
+				"one page past the depth cap":            "page=1002&per_page=100",
 			} {
 				// Act
 				req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
@@ -864,7 +870,7 @@ func createTestServerWithIsolatedConnection(
 	require.NoError(t, err)
 
 	// Each test gets its own store
-	store, storeCloser := pgxstore.New(storeConn)
+	store := pgxstore.New(storeConn)
 
 	// Create server with isolated connection resources and logging (like production)
 	mux := http.NewServeMux()
@@ -887,7 +893,7 @@ func createTestServerWithIsolatedConnection(
 	// Return server and cleanup function for this test's resources
 	cleanup := func() {
 		server.Close()
-		storeCloser() // Closes the connection pool for this test
+		storeConn.Close() // the connection pool this test opened
 	}
 
 	return server, cleanup

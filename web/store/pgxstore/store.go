@@ -25,15 +25,9 @@ type DelegationsFinder struct {
 	pool *pgxpool.Pool
 }
 
-// New creates a new PostgreSQL delegations finder with an existing connection pool
-// Returns the finder and a closer function.
-func New(pool *pgxpool.Pool) (*DelegationsFinder, func()) {
-	finder := &DelegationsFinder{pool: pool}
-	closer := func() {
-		pool.Close()
-	}
-
-	return finder, closer
+// New creates a PostgreSQL delegations finder over pool. The caller owns pool and closes it.
+func New(pool *pgxpool.Pool) *DelegationsFinder {
+	return &DelegationsFinder{pool: pool}
 }
 
 // FindDelegations queries delegations based on the provided criteria

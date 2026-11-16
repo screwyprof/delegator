@@ -56,9 +56,7 @@ func run() error {
 	}
 	defer db.Close()
 
-	store, storeCloser := pgxstore.New(db)
-	defer storeCloser()
-
+	store := pgxstore.New(db)
 	httpClient := &http.Client{Timeout: cfg.HTTPClientTimeout}
 	tzktClient := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
 

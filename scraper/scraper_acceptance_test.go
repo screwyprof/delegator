@@ -45,9 +45,7 @@ func TestScraperAcceptanceBehavior(t *testing.T) {
 		defer productionDB.Close()
 
 		// Production code uses its own connection
-		store, storeCloser := pgxstore.New(productionDB)
-		defer storeCloser()
-
+		store := pgxstore.New(productionDB)
 		httpClient := &http.Client{Timeout: cfg.HTTPClientTimeout}
 		client := tzkt.NewClient(httpClient, cfg.TzktAPIURL)
 

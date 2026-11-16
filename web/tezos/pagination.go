@@ -11,6 +11,10 @@ const (
 	DefaultPage    = 1   // Default to first page
 	DefaultPerPage = 50  // Default pagination size
 	MaxPerPage     = 100 // Maximum items per page
+
+	// MaxPageOffset is the most rows a page number may skip ((page-1)*per_page). OFFSET cost grows
+	// with depth; past this a client follows the cursor links, which cost the same at any depth.
+	MaxPageOffset = 100_000
 )
 
 // Page represents a page number for pagination.

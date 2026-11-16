@@ -162,50 +162,6 @@ func TestTzktClientGetDelegations(t *testing.T) {
 		assertURLContainsParam(t, err, requestURL, "limit=100")
 	})
 
-	t.Run("it excludes offset parameter when zero", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		var requestURL string
-
-		server := newURLTrackingServer(t, &requestURL)
-		defer server.Close()
-
-		client := newClientWithServer(server)
-
-		// Act
-		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
-			Limit:  10,
-			Offset: 0,
-		})
-
-		// Assert
-		assertURLContainsParam(t, err, requestURL, "limit=10")
-		assertURLExcludesParam(t, err, requestURL, "offset")
-	})
-
-	t.Run("it includes offset parameter when specified", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		var requestURL string
-
-		server := newURLTrackingServer(t, &requestURL)
-		defer server.Close()
-
-		client := newClientWithServer(server)
-
-		// Act
-		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
-			Limit:  10,
-			Offset: 50,
-		})
-
-		// Assert
-		assertURLContainsParam(t, err, requestURL, "limit=10")
-		assertURLContainsParam(t, err, requestURL, "offset=50")
-	})
-
 	t.Run("it includes select parameter for necessary fields", func(t *testing.T) {
 		t.Parallel()
 
@@ -288,48 +244,6 @@ func TestTzktClientGetDelegations(t *testing.T) {
 
 		// Assert
 		assertIDFilterPresent(t, err, requestURL, idFilter)
-	})
-
-	t.Run("it excludes timestamp.ge parameter when nil", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		var requestURL string
-
-		server := newURLTrackingServer(t, &requestURL)
-		defer server.Close()
-
-		client := newClientWithServer(server)
-
-		// Act
-		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
-			Limit: 10,
-		})
-
-		// Assert
-		assertTimestampFilterNotPresent(t, err, requestURL)
-	})
-
-	t.Run("it includes timestamp.ge parameter when specified", func(t *testing.T) {
-		t.Parallel()
-
-		// Arrange
-		var requestURL string
-
-		server := newURLTrackingServer(t, &requestURL)
-		defer server.Close()
-
-		client := newClientWithServer(server)
-		timestampFilter := time.Date(2024, 12, 1, 10, 0, 0, 0, time.UTC)
-
-		// Act
-		_, err := client.GetDelegations(t.Context(), tzkt.DelegationsRequest{
-			Limit:       10,
-			TimestampGE: &timestampFilter,
-		})
-
-		// Assert
-		assertTimestampFilterPresent(t, err, requestURL, timestampFilter)
 	})
 }
 
@@ -423,12 +337,6 @@ func assertURLContainsParam(t *testing.T, err error, requestURL, expectedParam s
 	assert.Contains(t, requestURL, expectedParam, "Expected URL to contain parameter: %s", expectedParam)
 }
 
-func assertURLExcludesParam(t *testing.T, err error, requestURL, excludedParam string) {
-	t.Helper()
-	require.NoError(t, err)
-	assert.NotContains(t, requestURL, excludedParam, "Expected URL to exclude parameter: %s", excludedParam)
-}
-
 func assertParsedDelegationsMatch(t *testing.T, expected, actual []tzkt.Delegation) {
 	t.Helper()
 	assert.Equal(t, expected, actual, "Parsed delegations should match expected values")
@@ -472,18 +380,4 @@ func assertIDFilterPresent(t *testing.T, err error, requestURL string, expectedI
 
 	expectedParam := fmt.Sprintf("id.gt=%d", expectedID)
 	assert.Contains(t, requestURL, expectedParam, "Expected continuation from ID %d", expectedID)
-}
-
-func assertTimestampFilterNotPresent(t *testing.T, err error, requestURL string) {
-	t.Helper()
-	require.NoError(t, err)
-	assert.NotContains(t, requestURL, "timestamp.ge", "Expected no time-based backfill filtering when not specified")
-}
-
-func assertTimestampFilterPresent(t *testing.T, err error, requestURL string, expectedTime time.Time) {
-	t.Helper()
-	require.NoError(t, err)
-	// Note: URL encoding will encode : as %3A, so we check for the core timestamp components
-	assert.Contains(t, requestURL, "timestamp.ge=", "Expected backfill filtering from timestamp")
-	assert.Contains(t, requestURL, "2024-12-01T10", "Expected backfill from time %v", expectedTime)
 }
