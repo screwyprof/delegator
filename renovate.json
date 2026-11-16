@@ -61,7 +61,7 @@
       "automerge": false
     },
     {
-      "description": "The Go toolchain moves by hand. It is pinned to the exact patch in go.work, every go.mod, the Dockerfiles' golang image, the CI workflow's go-version and the flake's go_1_27, and they must agree; Renovate can't move them together. 1.27.0/1.27.1 miscounted coverage (golang/go#80974), which is why the patch is deliberate.",
+      "description": "The Go toolchain moves by hand, in coordinated steps Renovate can't make: the Dockerfiles' golang image and the CI workflows' go-version (what ships), go.work and every go.mod (the minimum), and the flake's nixpkgs (the dev shell, which can lag). CONTRIBUTING.md lists the steps. 1.27.0/1.27.1 miscounted coverage (golang/go#80974), and 1.27.4 fixed a net/http crash (GO-2026-6859): the patch is always deliberate.",
       "matchDepNames": ["go", "golang"],
       "enabled": false
     }

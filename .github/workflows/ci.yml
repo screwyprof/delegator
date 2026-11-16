@@ -48,9 +48,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # The exact patch go.work and the go.mod files name. 1.27.0 and 1.27.1 miscount
-          # statements in coverage (golang/go#80974).
-          go-version: '1.27.3'
+          # The patch the Dockerfiles build with. 1.27.4 fixes GO-2026-6859 (a net/http server crash);
+          # 1.27.0 and 1.27.1 miscount coverage (golang/go#80974). go.work/go.mod name 1.27.3 as the
+          # minimum until nixpkgs ships 1.27.4; see CONTRIBUTING.md.
+          go-version: '1.27.4'
           # A PR run can read the default branch's cache but only writes to its own scope, so a
           # fork can't poison what main's runs use.
           cache: true
@@ -78,6 +79,11 @@ jobs:
       # module against the checksum database regardless -- and the next local `make` refreshes it.
       - name: Check make left the tree clean
         run: git diff --exit-code -- . ':(exclude)go.work.sum'
+
+      # Vulnerabilities reachable from this code, with the Go the images ship with. Also run daily on
+      # its own (vulns.yml): a new advisory needs no code change to apply.
+      - name: Vulnerabilities
+        run: make vulns
 
       # The images the demo and production run. Without this a Dockerfile change, or a Renovate
       # bump of a base image or the Dockerfile syntax, would merge on a green run that never built it.

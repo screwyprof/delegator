@@ -10,7 +10,7 @@ A lightning-fast Go-based service that ingests **all** Tezos delegation operatio
 
 ---
 ## 🔧 Prerequisites
-* **Go** ≥ 1.27.2 (1.27.0 and 1.27.1 miscount coverage, [golang/go#80974](https://github.com/golang/go/issues/80974)); go.work pins 1.27.3
+* **Go** ≥ 1.27.2 (1.27.0 and 1.27.1 miscount coverage, [golang/go#80974](https://github.com/golang/go/issues/80974)). Images and CI build with 1.27.4 (fixes GO-2026-6859); see [CONTRIBUTING.md](CONTRIBUTING.md)
 * **Docker** + **Docker Compose**
 * **Nix + direnv** (optional): `nix develop` / `use flake` pins Go and adds gopls, delve and pre-commit, and installs the git hooks on entry
 

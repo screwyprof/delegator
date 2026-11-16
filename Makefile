@@ -35,6 +35,10 @@ MODULE_DIRS = $(shell go list -m -f '{{.Dir}}')
 # Coverage exclusion patterns (regex alternation, anchored to whole path segments via
 # "(/|$)" so e.g. "cmd" can't match a substring of some unrelated future package name).
 COVERAGE_EXCLUDE := migrator|testcfg|cmd|web/config|web/internal/seedtestdb
+# The coverage gate: `make coverage` (and so CI) fails when the total drops below this. Set just
+# under the current total; raise it when coverage rises, so it ratchets rather than drifts.
+COVERAGE_FLOOR := 93
+MODULE_PATH := github.com/screwyprof/delegator
 # Package list for -coverpkg with excluded packages already filtered out here --
 # exclusion happens upfront via -coverpkg, not via a second grep-based filtering
 # pass over a raw profile (see the coverage target for the GOCOVERDIR merge step).
@@ -58,7 +62,7 @@ SHELL := bash
 
 # Declare all phony targets upfront
 .PHONY: help hooks clean all
-.PHONY: fmt lint check test coverage coverage-html coverage-svg
+.PHONY: fmt lint vulns check test coverage coverage-html coverage-svg
 .PHONY: sync-modules update-modules verify-modules
 .PHONY: build
 .PHONY: run run-migrator run-scraper run-web
@@ -86,9 +90,15 @@ help: ## Show this help screen
 GOLANGCI_VERSION := v2.15.0
 # renovate: datasource=go depName=github.com/nikolaydubina/go-cover-treemap
 TREEMAP_VERSION := v1.5.1
+# renovate: datasource=go depName=golang.org/x/vuln
+GOVULNCHECK_VERSION := v1.9.0
+# renovate: datasource=go depName=github.com/screwyprof/prettycov
+PRETTYCOV_VERSION := v0.17.0
 
 GOLANGCI := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 TREEMAP := go run github.com/nikolaydubina/go-cover-treemap@$(TREEMAP_VERSION)
+GOVULNCHECK := go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+PRETTYCOV := go run github.com/screwyprof/prettycov/cmd/prettycov@$(PRETTYCOV_VERSION)
 
 hooks: ## Install git pre-commit hooks (needs pre-commit; the nix devShell does this on entry)
 	@echo -e "$(OK_COLOR)--> Installing pre-commit hooks$(NO_COLOR)"
@@ -126,6 +136,14 @@ lint: ## Run golangci-lint static analysis
 	@echo -e "$(OK_COLOR)--> Running static analysis$(NO_COLOR)"
 	@$(GOLANGCI) run $(addsuffix /...,$(MODULE_DIRS))
 
+# Reachability-aware: reports only vulnerabilities on a call path from this code, in its
+# dependencies and in the standard library of the Go running it -- so the result depends on that
+# toolchain. CI runs it with the Go the images ship with; it isn't part of `check` because a dev
+# shell on an older patch (nixpkgs can lag) would fail on a vulnerability the images don't have.
+vulns: ## Report known vulnerabilities reachable from any workspace module
+	@echo -e "$(OK_COLOR)--> Checking for reachable vulnerabilities ($$(go env GOVERSION))$(NO_COLOR)"
+	@$(GOVULNCHECK) $(addsuffix /...,$(MODULE_DIRS))
+
 check: fmt lint test ## Run complete code quality pipeline (format, lint, test)
 
 test: ## Run all tests (unit + acceptance) with race detection
@@ -144,7 +162,10 @@ coverage: ## Run all tests with coverage, excluding packages not meaningful to m
 	 go test $(TEST_FLAGS) -tags=acceptance -cover -covermode=atomic -coverpkg=$(COVERPKG) work -args -test.gocoverdir="$$covdir"; \
 	 go tool covdata textfmt -i="$$covdir" -o=coverage.out
 	@echo -e "$(OK_COLOR)--> Coverage Summary:$(NO_COLOR)"
-	@go tool cover -func=coverage.out | grep "total:" || echo "No coverage data"
+	@go tool cover -func=coverage.out | grep "total:"
+	@# Per package, with uncovered/total statements, and a gate: a total below the floor fails.
+	@$(PRETTYCOV) report --profile=coverage.out --old=$(MODULE_PATH) --new=. --depth=2 --counts \
+		--fail-under=$(COVERAGE_FLOOR)
 
 coverage-html: coverage ## Generate and show HTML coverage report
 	@echo -e "$(OK_COLOR)--> Opening HTML coverage report$(NO_COLOR)"

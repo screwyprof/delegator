@@ -34,8 +34,8 @@
           devShells.default = pkgs.mkShell {
             packages = [
               # 1.27.2 or later: 1.27.0 and 1.27.1 miscount statements (golang/go#80974), which
-              # inflates `make coverage`. flake.lock's nixpkgs decides the exact patch; go.work and
-              # the go.mod files and Dockerfiles name the same one.
+              # inflates `make coverage`. flake.lock's nixpkgs decides the exact patch, which may lag
+              # the Dockerfiles and CI (they build what ships): see CONTRIBUTING.md.
               pkgs.go_1_27
               pkgs.gopls
               pkgs.gotools
